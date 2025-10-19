@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String?        @unique
+  phone           String?        @unique
+  password        String?
+  firstName       String
+  lastName        String
+  documentType    DocumentType
+  documentNumber  String         @unique
+  role            Role           @default(OWNER)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  inactivatedAt   DateTime?      
+  businesses      Business[]     @relation("OwnerBusinesses")
+  businessUsers   BusinessUser[]
+  createdDebts    Debt[]         @relation("UserCreatedDebts")
+  debtors         Debtor[]       @relation("UserDebtors")
+  createdPayments Payment[]      @relation("UserCreatedPayments")
+}
+
+model Business {
+  id            String         @id @default(uuid())
+  ownerId       String
+  name          String
+  address       String?
+  currency      String         @default("COP")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  owner         User           @relation("OwnerBusinesses", fields: [ownerId], references: [id])
+  businessUsers BusinessUser[]
+  debts         Debt[]
+  debtors       Debtor[]
+  invitations   Invitation[]   @relation("BusinessInvitations")
+}
+
+model BusinessUser {
+  id         String           @id @default(uuid())
+  businessId String
+  userId     String
+  role       BusinessUserRole @default(ADMIN)
+  createdAt  DateTime         @default(now())
+  business   Business         @relation(fields: [businessId], references: [id])
+  user       User             @relation(fields: [userId], references: [id])
+
+  @@unique([businessId, userId])
+}
+
+model Debtor {
+  id             String        @id @default(uuid())
+  businessId     String
+  userId         String?
+  name           String
+  phone          String?
+  documentType   DocumentType?
+  documentNumber String?
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  debts          Debt[]
+  business       Business      @relation(fields: [businessId], references: [id])
+  user           User?         @relation("UserDebtors", fields: [userId], references: [id])
+  invitations    Invitation[]
+
+  @@index([businessId, phone])
+  @@index([businessId, documentNumber])
+}
+
+model Debt {
+  id            String     @id @default(uuid())
+  businessId    String
+  debtorId      String
+  amount        Decimal    @db.Decimal(12, 2)
+  balance       Decimal    @db.Decimal(12, 2)
+  currency      String     @default("COP")
+  description   String?
+  status        DebtStatus @default(OPEN)
+  dueDate       DateTime?
+  createdBy     String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  business      Business   @relation(fields: [businessId], references: [id])
+  createdByUser User       @relation("UserCreatedDebts", fields: [createdBy], references: [id])
+  debtor        Debtor     @relation(fields: [debtorId], references: [id])
+  payments      Payment[]
+
+  @@index([businessId, debtorId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  debtId        String
+  amount        Decimal       @db.Decimal(12, 2)
+  paymentDate   DateTime      @default(now())
+  method        PaymentMethod
+  note          String?
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdByUser User          @relation("UserCreatedPayments", fields: [createdBy], references: [id])
+  debt          Debt          @relation(fields: [debtId], references: [id])
+
+  @@index([debtId])
+}
+
+model Invitation {
+  id         String           @id @default(uuid())
+  businessId String
+  debtorId   String?
+  email      String?
+  phone      String?
+  code       String           @unique
+  expiresAt  DateTime
+  status     InvitationStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  business   Business         @relation("BusinessInvitations", fields: [businessId], references: [id])
+  debtor     Debtor?          @relation(fields: [debtorId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+enum DocumentType {
+  CC
+  NIT
+  FOREIGNER
+}
+
+enum Role {
+  OWNER
+  EMPLOYEE
+  CLIENT
+}
+
+enum BusinessUserRole {
+  ADMIN
+  CASHIER
+  VIEWER
+}
+
+enum DebtStatus {
+  OPEN
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  OTHER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
