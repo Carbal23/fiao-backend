@@ -20,12 +20,13 @@ model User {
   role            Role           @default(OWNER)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-  inactivatedAt   DateTime?      
+  inactivatedAt   DateTime?
   businesses      Business[]     @relation("OwnerBusinesses")
   businessUsers   BusinessUser[]
   createdDebts    Debt[]         @relation("UserCreatedDebts")
   debtors         Debtor[]       @relation("UserDebtors")
   createdPayments Payment[]      @relation("UserCreatedPayments")
+  refreshTokens   RefreshToken[]
 }
 
 model Business {
@@ -134,6 +135,18 @@ model AuditLog {
   entityId  String?
   meta      Json?
   createdAt DateTime @default(now())
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  deviceInfo String? // opcional: "android-phone", "ios", "web", etc.
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 enum DocumentType {
