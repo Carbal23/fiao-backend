@@ -12,7 +12,6 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
-  // 🔁 Refrescar token (por header o body)
   @Post('refresh')
   async refresh(
     @Body() body: { userId: string },
@@ -22,7 +21,6 @@ export class AuthController {
     return this.authService.refreshTokens(body.userId, refreshToken);
   }
 
-  // 🚪 Logout
   @Post('logout')
   async logout(
     @Body()
