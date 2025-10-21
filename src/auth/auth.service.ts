@@ -11,6 +11,7 @@ import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { User } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
 export class AuthService {
@@ -55,7 +56,11 @@ export class AuthService {
   }
 
   private async signAccessToken(user: User) {
-    const payload = { sub: user.id, role: user.role };
+    const payload: JwtPayload = {
+      sub: user.id,
+      documentNumber: user.documentNumber,
+      role: user.role,
+    };
     const token = await this.jwtService.signAsync(payload, {
       expiresIn: this.config.get<string>('jwt.expiresIn'),
     });
@@ -111,11 +116,10 @@ export class AuthService {
       dto.deviceInfo,
     );
 
-    const refreshToken =
-      raw ??
-      this.findExistingRawToken(user.id, token.tokenHash, dto.deviceInfo);
+    const refreshToken = raw ?? '';
 
     return {
+      userId: user.id,
       accessToken,
       accessTokenExpiresIn: this.config.get<string>('jwt.expiresIn') || '15m',
       refreshToken,
@@ -127,7 +131,7 @@ export class AuthService {
     userId: string,
     presentedRefreshToken: string,
     deviceInfo?: string,
-  ) {
+  ): Promise<TokenResponseDto>  {
     const dbTokens = await this.prisma.refreshToken.findMany({
       where: {
         userId,
@@ -155,6 +159,7 @@ export class AuthService {
 
         const newAccessToken = await this.signAccessToken(user);
         return {
+          userId: user.id,
           accessToken: newAccessToken,
           accessTokenExpiresIn:
             this.config.get<string>('jwt.expiresIn') || '15m',
@@ -206,15 +211,5 @@ export class AuthService {
     if (!user) return null;
     const { password, ...rest } = user;
     return rest;
-  }
-
-  private findExistingRawToken(
-    userId: string,
-    hash: string,
-    deviceInfo?: string,
-  ) {
-    // En producción, no se puede derivar el raw token del hash.
-    // Esto se deja aquí solo para la estructura del DTO.
-    return ''; // normalmente no devuelves el raw token si ya existía
   }
 }

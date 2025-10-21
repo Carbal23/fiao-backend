@@ -1,4 +1,10 @@
-import { Controller, Post, Body, Headers } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Headers,
+  BadRequestException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
@@ -17,7 +23,8 @@ export class AuthController {
     @Body() body: { userId: string },
     @Headers('x-refresh-token') refreshToken: string,
   ) {
-    if (!refreshToken) throw new Error('Refresh token no enviado');
+    if (!refreshToken)
+      throw new BadRequestException('Refresh token no enviado');
     return this.authService.refreshTokens(body.userId, refreshToken);
   }
 
@@ -29,10 +36,11 @@ export class AuthController {
       refreshToken?: string;
       allDevices?: boolean;
     },
+    @Headers('x-refresh-token') refreshToken?: string,
   ) {
     return this.authService.logout(
       body.userId,
-      body.refreshToken,
+      body.refreshToken ?? refreshToken,
       !!body.allDevices,
     );
   }
