@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import configs from './config'
 import { AuthModule } from './auth/auth.module';
+import { BusinessModule } from './business/business.module';
 
 @Global()
 @Module({
@@ -16,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
     PrismaModule,
     UsersModule,
     AuthModule,
+    BusinessModule,
   ],
   controllers: [],
   providers: [],
