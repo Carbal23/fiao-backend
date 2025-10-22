@@ -11,7 +11,9 @@ import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { User } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { IJwtPayload } from './interfaces/jwt-payload.interface';
+import { UserSafe, userSafeSelect } from 'src/users/user.select';
+import { serializeUser } from 'src/users/helpers/user.serializer';
 
 @Injectable()
 export class AuthService {
@@ -21,7 +23,7 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async validateCredentials(
+  private async validateCredentials(
     identifier: string,
     password: string,
   ): Promise<User | null> {
@@ -40,7 +42,7 @@ export class AuthService {
 
     let isMatch = false;
     try {
-      // Cast bcrypt.compare to a known function signature to avoid unsafe calls
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       const compareFn = bcrypt.compare as unknown as (
         a: string,
         b: string,
@@ -56,7 +58,7 @@ export class AuthService {
   }
 
   private async signAccessToken(user: User) {
-    const payload: JwtPayload = {
+    const payload: IJwtPayload = {
       sub: user.id,
       documentNumber: user.documentNumber,
       role: user.role,
@@ -111,15 +113,16 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
     const accessToken = await this.signAccessToken(user);
-    const { token, raw, reused } = await this.createOrReuseRefreshToken(
+    const { token, raw } = await this.createOrReuseRefreshToken(
       user.id,
       dto.deviceInfo,
     );
 
     const refreshToken = raw ?? '';
+    const safeUser = serializeUser(user);
 
     return {
-      userId: user.id,
+      user: safeUser as UserSafe,
       accessToken,
       accessTokenExpiresIn: this.config.get<string>('jwt.expiresIn') || '15m',
       refreshToken,
@@ -131,7 +134,7 @@ export class AuthService {
     userId: string,
     presentedRefreshToken: string,
     deviceInfo?: string,
-  ): Promise<TokenResponseDto>  {
+  ): Promise<TokenResponseDto> {
     const dbTokens = await this.prisma.refreshToken.findMany({
       where: {
         userId,
@@ -158,8 +161,10 @@ export class AuthService {
         if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
         const newAccessToken = await this.signAccessToken(user);
+        const safeUser = serializeUser(user);
+
         return {
-          userId: user.id,
+          user: safeUser as UserSafe,
           accessToken: newAccessToken,
           accessTokenExpiresIn:
             this.config.get<string>('jwt.expiresIn') || '15m',
@@ -172,12 +177,11 @@ export class AuthService {
     throw new UnauthorizedException('Refresh token inválido o expirado');
   }
 
-  // Logout: eliminar refresh token (o todos)
   async logout(
     userId: string,
     presentedRefreshToken?: string,
     allDevices = false,
-  ) {
+  ): Promise<{ message: string }> {
     if (allDevices) {
       await this.prisma.refreshToken.deleteMany({ where: { userId } });
       return { message: 'Sesiones cerradas en todos los dispositivos' };
@@ -205,11 +209,13 @@ export class AuthService {
     return { message: 'Logout realizado (token no encontrado o ya eliminado)' };
   }
 
-  // Helper para extraer user sin password
-  async getUserSafeById(id: string): Promise<Omit<User, 'password'> | null> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async getUserSafeById(id: string): Promise<UserSafe | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: userSafeSelect,
+    });
     if (!user) return null;
-    const { password, ...rest } = user;
-    return rest;
+
+    return user;
   }
 }

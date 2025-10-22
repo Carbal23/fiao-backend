@@ -4,7 +4,8 @@ import { Strategy, StrategyOptions } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service';
 import { Request } from 'express';
-import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { IJwtPayload } from '../interfaces/jwt-payload.interface';
+import { UserSafe } from 'src/users/user.select';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
@@ -29,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super(options);
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: IJwtPayload): Promise<UserSafe | null> {
     const user = await this.authService.getUserSafeById(payload.sub);
     return user;
   }

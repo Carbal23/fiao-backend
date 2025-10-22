@@ -1,4 +1,4 @@
-export interface JwtPayload {
+export interface IJwtPayload {
   sub: string;
   documentNumber: string;
   role: string;

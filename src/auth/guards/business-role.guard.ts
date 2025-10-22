@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { BUSINESS_ROLES_KEY } from '../decorators/business-role.decorator';
+import { extractBusinessId } from 'src/common/utils/BusinessId.util';
 
 @Injectable()
 export class BusinessRoleGuard implements CanActivate {
@@ -34,10 +35,7 @@ export class BusinessRoleGuard implements CanActivate {
     const { user } = request;
     if (!user) throw new UnauthorizedException('Usuario no autenticado');
 
-    const businessId =
-      (request.headers['x-business-id'] as string | undefined) ||
-      request.params?.businessId ||
-      request.query?.businessId;
+    const businessId = extractBusinessId(request);
 
     if (!businessId) {
       throw new ForbiddenException(

@@ -8,12 +8,13 @@ import { Prisma, User } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserSafe, userSafeSelect } from './user.select';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: CreateUserDto): Promise<Omit<User, 'password'>> {
+  async create(data: CreateUserDto): Promise<UserSafe> {
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -65,10 +66,10 @@ export class UsersService {
           ...data,
           password: hashedPassword,
         },
+        select: userSafeSelect,
       });
 
-      const { password, ...result } = user;
-      return result;
+      return user;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
@@ -82,47 +83,34 @@ export class UsersService {
     }
   }
 
-  async findAll(): Promise<
-    Omit<User, 'password' | 'inactivatedAt' | 'updatedAt'>[]
-  > {
-    return this.prisma.user.findMany({
+  async findAll(): Promise<UserSafe[]> {
+    const users = this.prisma.user.findMany({
       where: { inactivatedAt: null },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        role: true,
-        createdAt: true,
-        documentType: true,
-        documentNumber: true,
-      },
+      select: userSafeSelect,
     });
+
+    return users;
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email } });
-  }
-
-  async findOne(id: string): Promise<Omit<User, 'password'> | null> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async findOne(id: string): Promise<UserSafe | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: userSafeSelect,
+    });
     if (!user) throw new NotFoundException('User not found');
 
-    const { password, ...result } = user;
-    return result;
+    return user;
   }
 
-  async update(
-    id: string,
-    data: UpdateUserDto,
-  ): Promise<Omit<User, 'password'>> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async update(id: string, data: UpdateUserDto): Promise<UserSafe> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: userSafeSelect,
+    });
     if (!user) throw new NotFoundException('User not found');
 
     const updateData = { ...data };
 
-    // Si viene password, la encriptamos
     if (data.password) {
       updateData.password = await (
         bcrypt as unknown as {
@@ -134,25 +122,23 @@ export class UsersService {
     const updated = await this.prisma.user.update({
       where: { id },
       data: updateData,
+      select: userSafeSelect,
     });
 
-    const { password, ...result } = updated;
-    return result;
+    return updated;
   }
 
-  async inactivate(id: string) {
+  async inactivate(id: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
-    const updated = await this.prisma.user.update({
+    await this.prisma.user.update({
       where: { id },
       data: { inactivatedAt: new Date() },
     });
 
-    const { password, ...result } = updated;
     return {
       message: 'User inactivated successfully',
-      user: result,
     };
   }
 }
