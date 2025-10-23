@@ -13,5 +13,5 @@ export class CreateBusinessDto {
 
   @IsOptional()
   @IsString()
-  currency?: string; // por defecto será "COP" si no se envía
+  currency?: string; 
 }

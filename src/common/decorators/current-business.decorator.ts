@@ -18,6 +18,6 @@ export const CurrentBusiness = createParamDecorator(
       );
     }
 
-    return businessId as string;
+    return businessId;
   },
 );
