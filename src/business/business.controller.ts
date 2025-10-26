@@ -12,6 +12,8 @@ import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
+import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 
 @Controller('business')
 @UseGuards(JwtAuthGuard)
@@ -34,6 +36,8 @@ export class BusinessController {
   }
 
   @Patch(':id')
+  @UseGuards(BusinessRoleGuard)
+  @BusinessRoles('OWNER', 'ADMIN')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateBusinessDto,

@@ -25,7 +25,7 @@ export class BusinessService {
         data: {
           businessId: business.id,
           userId,
-          role: BusinessUserRole.ADMIN,
+          role: BusinessUserRole.OWNER,
         },
       });
 

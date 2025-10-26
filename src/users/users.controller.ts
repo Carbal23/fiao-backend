@@ -4,8 +4,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { Roles } from 'src/auth/decorators/roles.decorator';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -15,31 +14,33 @@ export class UsersController {
     return this.usersService.create(data);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER')
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.usersService.findAll();
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER')
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER')
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(@Param('id') id: string, @Body() data: UpdateUserDto) {
     return this.usersService.update(id, data);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('OWNER')
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/inactivate')
   inactivate(@Param('id') id: string) {
     return this.usersService.inactivate(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/dashboard')
+  getUserDashboard(@GetUser('id') userId: string) {
+    return this.usersService.getUserDashboard(userId);
   }
 }

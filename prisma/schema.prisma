@@ -17,7 +17,7 @@ model User {
   lastName        String
   documentType    DocumentType
   documentNumber  String         @unique
-  role            Role           @default(OWNER)
+  role            Role           @default(USER)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   inactivatedAt   DateTime?
@@ -48,7 +48,7 @@ model BusinessUser {
   id         String           @id @default(uuid())
   businessId String
   userId     String
-  role       BusinessUserRole @default(ADMIN)
+  role       BusinessUserRole @default(VIEWER)
   createdAt  DateTime         @default(now())
   business   Business         @relation(fields: [businessId], references: [id])
   user       User             @relation(fields: [userId], references: [id])
@@ -156,15 +156,17 @@ enum DocumentType {
 }
 
 enum Role {
-  OWNER
-  EMPLOYEE
-  CLIENT
+  USER // por defecto, cualquier usuario registrado
+  ADMIN // administrador de la plataforma (ej. soporte, superadmin)
+  MODERATOR // opcional, revisión de contenidos o incidencias
+  SUSPENDED // cuenta bloqueada
 }
 
 enum BusinessUserRole {
-  ADMIN
-  CASHIER
-  VIEWER
+  OWNER // dueño del negocio (aunque también está en Business.ownerId)
+  ADMIN // puede gestionar usuarios, deudas, pagos
+  CASHIER // puede registrar pagos, ver deudas
+  VIEWER // solo lectura
 }
 
 enum DebtStatus {

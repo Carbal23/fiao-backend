@@ -4,11 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserSafe, userSafeSelect } from './user.select';
+import { UserDashboardDto } from './dto/user-dashboard.dto';
 
 @Injectable()
 export class UsersService {
@@ -139,6 +140,65 @@ export class UsersService {
 
     return {
       message: 'User inactivated successfully',
+    };
+  }
+
+  async getUserDashboard(userId: string): Promise<UserDashboardDto> {
+    const userExists = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!userExists) throw new Error('Usuario no encontrado');
+
+    const [ownedBusinesses, workingBusinesses, clientBusinesses] =
+      await Promise.all([
+        this.prisma.business.findMany({
+          where: { ownerId: userId },
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            currency: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.businessUser.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            role: true,
+            business: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                currency: true,
+              },
+            },
+          },
+        }),
+        this.prisma.debtor.findMany({
+          where: { userId },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            business: {
+              select: {
+                id: true,
+                name: true,
+                currency: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    return {
+      ownedBusinesses,
+      workingBusinesses,
+      clientBusinesses,
     };
   }
 }

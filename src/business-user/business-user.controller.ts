@@ -54,7 +54,7 @@ export class BusinessUserController {
   }
 
   @Delete(':id')
-  @BusinessRoles('ADMIN', 'OWNER')
+  @BusinessRoles('OWNER')
   async removeUser(
     @CurrentBusiness() businessId: string,
     @Param('id') id: string,

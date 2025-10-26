@@ -13,5 +13,5 @@ export class CreateBusinessDto {
 
   @IsOptional()
   @IsString()
-  currency?: string; 
+  currency?: string;
 }
