@@ -60,7 +60,18 @@ export class BusinessService {
     const business = await this.prisma.business.findUnique({
       where: { id },
       include: {
-        businessUsers: true,
+        businessUsers: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
       },
     });
 
