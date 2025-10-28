@@ -70,6 +70,29 @@ export class UsersService {
         select: userSafeSelect,
       });
 
+      const debtorMatches = await this.prisma.debtor.findMany({
+        where: {
+          OR: [
+            { documentNumber: data.documentNumber ?? undefined },
+            { phone: data.phone ?? undefined },
+          ],
+          userId: null,
+        },
+      });
+
+      if (debtorMatches.length > 0) {
+        await this.prisma.debtor.updateMany({
+          where: {
+            id: { in: debtorMatches.map((d) => d.id) },
+          },
+          data: { userId: user.id },
+        });
+
+        console.log(
+          `🔗 Vinculados ${debtorMatches.length} deudores al usuario ${user.id}`,
+        );
+      }
+
       return user;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
