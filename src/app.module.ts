@@ -8,6 +8,7 @@ import { BusinessModule } from './business/business.module';
 import { BusinessUserModule } from './business-user/business-user.module';
 import { DebtorsModule } from './debtors/debtors.module';
 import { DebtsModule } from './debts/debts.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Global()
 @Module({
@@ -24,6 +25,7 @@ import { DebtsModule } from './debts/debts.module';
     BusinessUserModule,
     DebtorsModule,
     DebtsModule,
+    PaymentsModule,
   ],
   controllers: [],
   providers: [],
