@@ -7,6 +7,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDebtDto } from './dto/create-debt.dto';
 import { UpdateDebtStatusDto } from './dto/update-debt-status.dto';
 import { debtSelect } from './debt.select';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DebtsService {
@@ -40,7 +41,7 @@ export class DebtsService {
         businessId,
         debtorId,
         amount,
-        balance: amount,
+        balance: new Prisma.Decimal(amount),
         description,
         dueDate,
         createdBy: userId,
