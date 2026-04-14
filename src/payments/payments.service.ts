@@ -22,9 +22,21 @@ export class PaymentsService {
 
     if (!debt) throw new NotFoundException('Deuda no encontrada');
 
+    const balance = debt.balance.toNumber();
+
     // Validaciones básicas
+    if (debt.status === DebtStatus.PAID && type === PaymentType.PAYMENT) {
+      throw new BadRequestException('La deuda ya está saldada');
+    }
+
     if (type === PaymentType.PAYMENT && amount <= 0) {
       throw new BadRequestException('El abono debe ser mayor a cero');
+    }
+
+    if (type === PaymentType.PAYMENT && amount > balance) {
+      throw new BadRequestException(
+        `El pago no puede ser mayor al saldo actual (${balance})`,
+      );
     }
 
     // Crear pago (usar Prisma.Decimal para amounts)

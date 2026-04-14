@@ -40,7 +40,7 @@ export class DebtsService {
       data: {
         businessId,
         debtorId,
-        amount,
+        amount: new Prisma.Decimal(amount),
         balance: new Prisma.Decimal(amount),
         description,
         dueDate,
