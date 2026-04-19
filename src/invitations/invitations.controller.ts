@@ -3,6 +3,8 @@ import { InvitationsService } from './invitations.service';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('invitations')
@@ -10,8 +12,11 @@ export class InvitationsController {
   constructor(private readonly invitationsService: InvitationsService) {}
 
   @Post()
-  create(@Body() dto: CreateInvitationDto) {
-    return this.invitationsService.create(dto);
+  create(
+    @Body() dto: CreateInvitationDto,
+    @CurrentBusiness() businessId: string,
+  ) {
+    return this.invitationsService.create(dto, businessId);
   }
 
   @Get(':code')
@@ -20,8 +25,8 @@ export class InvitationsController {
   }
 
   @Post('accept')
-  accept(@Body() dto: AcceptInvitationDto) {
-    return this.invitationsService.accept(dto);
+  accept(@Body() dto: AcceptInvitationDto, @GetUser('id') userId: string) {
+    return this.invitationsService.accept(dto, userId);
   }
 
   @Get('business/:businessId')

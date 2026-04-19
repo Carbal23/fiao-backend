@@ -9,14 +9,10 @@ import {
 export class CreateDebtDto {
   @IsUUID()
   @IsNotEmpty()
-  businessId: string;
-
-  @IsUUID()
-  @IsNotEmpty()
-  debtorId: string;
+  debtorId!: string;
 
   @IsNumber()
-  amount: number;
+  amount!: number;
 
   @IsOptional()
   @IsString()

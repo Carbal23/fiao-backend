@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDebtDto } from './dto/create-debt.dto';
 import { UpdateDebtStatusDto } from './dto/update-debt-status.dto';
@@ -18,16 +14,10 @@ export class DebtsService {
     userId: string,
     businessIdFromHeader: string,
   ) {
-    const { businessId, debtorId, amount, description, dueDate } = createDto;
-
-    if (createDto.businessId !== businessIdFromHeader) {
-      throw new ForbiddenException(
-        'El businessId del body no coincide con el header x-business-id',
-      );
-    }
+    const { debtorId, amount, description, dueDate } = createDto;
 
     const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
+      where: { id: businessIdFromHeader },
     });
     if (!business) throw new NotFoundException('Negocio no encontrado');
 
@@ -38,7 +28,7 @@ export class DebtsService {
 
     const debt = await this.prisma.debt.create({
       data: {
-        businessId,
+        businessId: businessIdFromHeader,
         debtorId,
         amount: new Prisma.Decimal(amount),
         balance: new Prisma.Decimal(amount),

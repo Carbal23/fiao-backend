@@ -123,6 +123,8 @@ model Invitation {
   code       String           @unique
   expiresAt  DateTime
   status     InvitationStatus @default(PENDING)
+  type       InvitationType   @default(DEBTOR)
+  role       BusinessUserRole? 
   createdAt  DateTime         @default(now())
   business   Business         @relation("BusinessInvitations", fields: [businessId], references: [id])
   debtor     Debtor?          @relation(fields: [debtorId], references: [id])
@@ -193,4 +195,9 @@ enum InvitationStatus {
   PENDING
   ACCEPTED
   EXPIRED
+}
+
+enum InvitationType {
+  DEBTOR
+  BUSINESS_USER
 }

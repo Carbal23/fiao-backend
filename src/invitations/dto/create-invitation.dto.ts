@@ -4,12 +4,11 @@ import {
   IsUUID,
   IsPhoneNumber,
   IsDateString,
+  IsEnum,
 } from 'class-validator';
+import { InvitationType, BusinessUserRole } from '@prisma/client';
 
 export class CreateInvitationDto {
-  @IsUUID()
-  businessId: string;
-
   @IsOptional()
   @IsUUID()
   debtorId?: string;
@@ -21,6 +20,13 @@ export class CreateInvitationDto {
   @IsOptional()
   @IsPhoneNumber('CO')
   phone?: string;
+
+  @IsEnum(InvitationType)
+  type: InvitationType;
+
+  @IsOptional()
+  @IsEnum(BusinessUserRole)
+  role?: BusinessUserRole;
 
   @IsOptional()
   @IsDateString()

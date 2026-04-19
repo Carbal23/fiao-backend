@@ -7,6 +7,8 @@ export const invitationSelect = {
   businessId: true,
   expiresAt: true,
   status: true,
+  type: true,
+  role: true,
   createdAt: true,
   debtor: {
     select: { id: true, name: true, phone: true },
