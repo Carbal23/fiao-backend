@@ -9,16 +9,32 @@ import { CreateBusinessUserDto } from './dto/create-business-user.dto';
 import { UpdateBusinessUserDto } from './dto/update-business-user.dto';
 import { BusinessUserRole } from '@prisma/client';
 import { BusinessUserResponse } from './interfaces/business-user.interface';
+import { AuditService } from 'src/audit/audit.service';
+import { AuditAction } from 'src/audit/audit.types';
 
 @Injectable()
 export class BusinessUserService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async addUserToBusiness(
     businessId: string,
     dto: CreateBusinessUserDto,
+    addBy: string,
   ): Promise<BusinessUserResponse> {
     const { userId, role } = dto;
+
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+    if (!business) throw new NotFoundException('Negocio no encontrado');
+
+    if (business.inactivatedAt)
+      throw new BadRequestException(
+        'No puedes agregar usuarios a un negocio inactivado',
+      );
 
     const exists = await this.prisma.businessUser.findUnique({
       where: {
@@ -31,7 +47,7 @@ export class BusinessUserService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuario no registrado en la app');
 
-    return this.prisma.businessUser.create({
+    const newBusinessUser = await this.prisma.businessUser.create({
       data: {
         businessId,
         userId,
@@ -49,11 +65,34 @@ export class BusinessUserService {
         },
       },
     });
+
+    await this.auditService.log({
+      userId: addBy,
+      action: AuditAction.BUSINESS_USER_ADDED,
+      entity: 'BusinessUser',
+      entityId: newBusinessUser.id,
+      meta: {
+        userId,
+        businessId,
+        role,
+      },
+    });
+
+    return newBusinessUser;
   }
 
   async getUsersByBusiness(
     businessId: string,
   ): Promise<BusinessUserResponse[]> {
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+    });
+    if (!business) throw new NotFoundException('Negocio no encontrado');
+
+    if (business.inactivatedAt)
+      throw new BadRequestException(
+        'No puedes agregar usuarios a un negocio inactivado',
+      );
     return this.prisma.businessUser.findMany({
       where: { businessId },
       include: {
@@ -88,6 +127,11 @@ export class BusinessUserService {
     });
     if (!business) throw new NotFoundException('Negocio no encontrado');
 
+    if (business.inactivatedAt)
+      throw new BadRequestException(
+        'No puedes modificar usuarios de un negocio inactivado',
+      );
+
     if (membership.userId === business.ownerId) {
       throw new ForbiddenException(
         'No puedes modificar el rol del propietario del negocio',
@@ -98,7 +142,7 @@ export class BusinessUserService {
       throw new ForbiddenException('No puedes modificar tu propio rol');
     }
 
-    return this.prisma.businessUser.update({
+    const updated = await this.prisma.businessUser.update({
       where: { id: businessUserId },
       data: { role: dto.role },
       include: {
@@ -113,6 +157,21 @@ export class BusinessUserService {
         },
       },
     });
+
+    await this.auditService.log({
+      userId: currentUserId,
+      action: AuditAction.BUSINESS_USER_ROLE_UPDATED,
+      entity: 'BusinessUser',
+      entityId: membership.id,
+      meta: {
+        userId: membership.userId,
+        businessId,
+        previusRole: membership.role,
+        newRole: dto.role,
+      },
+    });
+
+    return updated;
   }
 
   async removeUserFromBusiness(
@@ -131,6 +190,11 @@ export class BusinessUserService {
     });
     if (!business) throw new NotFoundException('Negocio no encontrado');
 
+    if (business.inactivatedAt)
+      throw new BadRequestException(
+        'No puedes eliminar usuarios de un negocio inactivado',
+      );
+
     if (membership.userId === business.ownerId) {
       throw new ForbiddenException(
         'No puedes eliminar al propietario del negocio',
@@ -143,6 +207,18 @@ export class BusinessUserService {
 
     await this.prisma.businessUser.delete({
       where: { id: businessUserId },
+    });
+
+    await this.auditService.log({
+      userId: currentUserId,
+      action: AuditAction.BUSINESS_USER_REMOVED,
+      entity: 'BusinessUser',
+      entityId: membership.id,
+      meta: {
+        userId: membership.userId,
+        businessId,
+        role: membership.role,
+      },
     });
 
     return { message: 'Usuario eliminado del negocio correctamente' };

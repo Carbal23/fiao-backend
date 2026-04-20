@@ -11,12 +11,15 @@ import { invitationSelect } from './invitation.select';
 import { InvitationStatus, InvitationType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { EmailProvider } from 'src/providers/email.provider';
+import { AuditService } from 'src/audit/audit.service';
+import { AuditAction } from 'src/audit/audit.types';
 
 @Injectable()
 export class InvitationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailProvider: EmailProvider,
+    private readonly auditService: AuditService,
   ) {}
 
   private generateCode() {
@@ -92,6 +95,18 @@ export class InvitationsService {
       }
     }
 
+    await this.auditService.log({
+      action: AuditAction.INVITATION_CREATED,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      meta: {
+        businessId,
+        email,
+        phone,
+        type: invitation.type,
+      },
+    });
+
     return {
       message: 'Invitación creada',
       invitation,
@@ -157,11 +172,21 @@ export class InvitationsService {
       }
     }
 
-    // marcar invitación como aceptada
     await this.prisma.invitation.update({
       where: { code },
       data: {
         status: InvitationStatus.ACCEPTED,
+      },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.INVITATION_ACCEPTED,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      meta: {
+        type: invitation.type,
+        businessId: invitation.businessId,
       },
     });
 

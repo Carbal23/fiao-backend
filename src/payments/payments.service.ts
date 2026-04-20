@@ -7,10 +7,15 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { paymentSelect } from './payment.select';
 import { PaymentType, DebtStatus, Prisma } from '@prisma/client';
+import { AuditService } from 'src/audit/audit.service';
+import { AuditAction } from 'src/audit/audit.types';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async create(dto: CreatePaymentDto, userId: string) {
     const { debtId, amount, method, type, note } = dto;
@@ -24,7 +29,6 @@ export class PaymentsService {
 
     const balance = debt.balance.toNumber();
 
-    // Validaciones básicas
     if (debt.status === DebtStatus.PAID && type === PaymentType.PAYMENT) {
       throw new BadRequestException('La deuda ya está saldada');
     }
@@ -53,12 +57,30 @@ export class PaymentsService {
     });
 
     // Recalcular balance y estado
-    await this.recalculateDebtBalance(debtId);
+    await this.recalculateDebtBalance(debtId, userId);
+
+    await this.auditService.log({
+      userId,
+      action:
+        type === 'PAYMENT'
+          ? AuditAction.PAYMENT_CREATED
+          : type === 'ADJUSTMENT'
+            ? AuditAction.PAYMENT_ADJUSTMENT
+            : AuditAction.PAYMENT_REVERSAL,
+      entity: 'Payment',
+      entityId: payment.id,
+      meta: {
+        amount,
+        type,
+        method,
+        debtId,
+      },
+    });
 
     return payment;
   }
 
-  async recalculateDebtBalance(debtId: string) {
+  async recalculateDebtBalance(debtId: string, userId: string) {
     const debt = await this.prisma.debt.findUnique({
       where: { id: debtId },
       include: {
@@ -91,6 +113,18 @@ export class PaymentsService {
       where: { id: debtId },
       data: {
         balance: new Prisma.Decimal(newBalance),
+        status: newStatus,
+      },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.DEBT_STATUS_CHANGED,
+      entity: 'Debt',
+      entityId: debtId,
+      meta: {
+        previousBalance: baseAmount,
+        newBalance,
         status: newStatus,
       },
     });

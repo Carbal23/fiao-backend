@@ -25,10 +25,11 @@ export class BusinessUserController {
   @Post()
   @BusinessRoles('ADMIN', 'OWNER')
   async addUser(
+    @GetUser('id') addBy: string,
     @CurrentBusiness() businessId: string,
     @Body() dto: CreateBusinessUserDto,
   ) {
-    return this.businessUserService.addUserToBusiness(businessId, dto);
+    return this.businessUserService.addUserToBusiness(businessId, dto, addBy);
   }
 
   @Get(':businessId')

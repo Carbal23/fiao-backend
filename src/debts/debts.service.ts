@@ -4,10 +4,15 @@ import { CreateDebtDto } from './dto/create-debt.dto';
 import { UpdateDebtStatusDto } from './dto/update-debt-status.dto';
 import { debtSelect } from './debt.select';
 import { Prisma } from '@prisma/client';
+import { AuditService } from 'src/audit/audit.service';
+import { AuditAction } from 'src/audit/audit.types';
 
 @Injectable()
 export class DebtsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async create(
     createDto: CreateDebtDto,
@@ -37,6 +42,18 @@ export class DebtsService {
         createdBy: userId,
       },
       select: debtSelect,
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.DEBT_CREATED,
+      entity: 'Debt',
+      entityId: debt.id,
+      meta: {
+        amount,
+        debtorId,
+        businessId: businessIdFromHeader,
+      },
     });
 
     return debt;
@@ -69,6 +86,19 @@ export class DebtsService {
         balance: updateDto.balance ?? debt.balance,
       },
       select: debtSelect,
+    });
+
+    await this.auditService.log({
+      userId: updated.createdByUser.id,
+      action: AuditAction.DEBT_STATUS_CHANGED,
+      entity: 'Debt',
+      entityId: debt.id,
+      meta: {
+        previousStatus: debt.status,
+        newStatus: updateDto.status,
+        previousBalance: debt.balance.toNumber(),
+        newBalance: updateDto.balance ?? debt.balance.toNumber(),
+      },
     });
 
     return updated;

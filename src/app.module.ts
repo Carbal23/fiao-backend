@@ -10,6 +10,7 @@ import { DebtorsModule } from './debtors/debtors.module';
 import { DebtsModule } from './debts/debts.module';
 import { PaymentsModule } from './payments/payments.module';
 import { InvitationsModule } from './invitations/invitations.module';
+import { AuditModule } from './audit/audit.module';
 
 @Global()
 @Module({
@@ -28,6 +29,7 @@ import { InvitationsModule } from './invitations/invitations.module';
     DebtsModule,
     PaymentsModule,
     InvitationsModule,
+    AuditModule,
   ],
   controllers: [],
   providers: [],

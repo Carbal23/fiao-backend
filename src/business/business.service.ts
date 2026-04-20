@@ -2,15 +2,21 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
 import { BusinessUserRole } from '@prisma/client';
+import { AuditService } from 'src/audit/audit.service';
+import { AuditAction } from 'src/audit/audit.types';
 
 @Injectable()
 export class BusinessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async create(createBusinessDto: CreateBusinessDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -26,6 +32,17 @@ export class BusinessService {
           businessId: business.id,
           userId,
           role: BusinessUserRole.OWNER,
+        },
+      });
+
+      await this.auditService.log({
+        userId,
+        action: AuditAction.BUSINESS_CREATED,
+        entity: 'Business',
+        entityId: business.id,
+        meta: {
+          businessName: business.name,
+          address: business.address,
         },
       });
 
@@ -77,6 +94,9 @@ export class BusinessService {
 
     if (!business) throw new NotFoundException('Negocio no encontrado');
 
+    if (business.inactivatedAt)
+      throw new BadRequestException('Negocio inactivado');
+
     const isMember =
       business.ownerId === userId ||
       business.businessUsers.some((u) => u.userId === userId);
@@ -94,9 +114,79 @@ export class BusinessService {
         'Solo el propietario puede actualizar el negocio',
       );
 
-    return this.prisma.business.update({
+    if (business.inactivatedAt)
+      throw new BadRequestException(
+        'No puedes modificar un negocio inactivado',
+      );
+
+    const updated = await this.prisma.business.update({
       where: { id },
       data: dto,
     });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.BUSINESS_UPDATED,
+      entity: 'Business',
+      entityId: updated.id,
+      meta: {
+        previousBusinessName: updated.name,
+        newBusinessName: dto.name,
+        previousAddress: updated.address,
+        newAddress: dto.address,
+      },
+    });
+
+    return updated;
+  }
+
+  async remove(id: string, userId: string) {
+    const business = await this.prisma.business.findUnique({
+      where: { id },
+      include: {
+        debts: true,
+      },
+    });
+
+    if (!business) {
+      throw new NotFoundException('Negocio no encontrado');
+    }
+
+    if (business.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Solo el propietario puede inactivar el negocio',
+      );
+    }
+
+    if (business.inactivatedAt) {
+      throw new BadRequestException('El negocio ya está inactivo');
+    }
+
+    // 🔴 Regla opcional (recomendada)
+    const hasActiveDebts = business.debts.some(
+      (d) => d.status !== 'PAID' && d.status !== 'CANCELLED',
+    );
+
+    if (hasActiveDebts) {
+      throw new BadRequestException(
+        'No puedes inactivar un negocio con deudas activas',
+      );
+    }
+
+    await this.prisma.business.update({
+      where: { id },
+      data: {
+        inactivatedAt: new Date(),
+      },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.BUSINESS_DEACTIVATED,
+      entity: 'Business',
+      entityId: id,
+    });
+
+    return { message: 'Negocio inactivado correctamente' };
   }
 }
