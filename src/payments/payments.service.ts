@@ -17,7 +17,7 @@ export class PaymentsService {
     private readonly auditService: AuditService,
   ) {}
 
-  async create(dto: CreatePaymentDto, userId: string) {
+  async create(dto: CreatePaymentDto, userId: string, businessId: string) {
     const { debtId, amount, method, type, note } = dto;
 
     const debt = await this.prisma.debt.findUnique({
@@ -26,6 +26,10 @@ export class PaymentsService {
     });
 
     if (!debt) throw new NotFoundException('Deuda no encontrada');
+
+    if (debt.businessId !== businessId) {
+      throw new BadRequestException('La deuda no pertenece al negocio activo');
+    }
 
     const balance = debt.balance.toNumber();
 
@@ -47,6 +51,7 @@ export class PaymentsService {
     const payment = await this.prisma.payment.create({
       data: {
         debtId,
+        businessId: debt.businessId,
         amount: new Prisma.Decimal(amount),
         method,
         type,

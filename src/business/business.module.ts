@@ -6,7 +6,7 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuditModule } from 'src/audit/audit.module';
 
 @Module({
-   imports: [PrismaModule, AuditModule],
+  imports: [PrismaModule, AuditModule],
   controllers: [BusinessController],
   providers: [BusinessService, PrismaService],
   exports: [BusinessService],

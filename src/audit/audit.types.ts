@@ -29,3 +29,11 @@ export enum AuditAction {
   BUSINESS_UPDATED = 'BUSINESS_UPDATED',
   BUSINESS_DEACTIVATED = 'BUSINESS_DEACTIVATED',
 }
+
+export interface LogParams {
+  userId?: string;
+  action: AuditAction;
+  entity: string;
+  entityId?: string;
+  meta?: any;
+}

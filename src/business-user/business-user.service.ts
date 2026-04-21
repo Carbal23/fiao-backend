@@ -26,16 +26,6 @@ export class BusinessUserService {
   ): Promise<BusinessUserResponse> {
     const { userId, role } = dto;
 
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
-
     const exists = await this.prisma.businessUser.findUnique({
       where: {
         businessId_userId: { businessId, userId },
@@ -84,15 +74,6 @@ export class BusinessUserService {
   async getUsersByBusiness(
     businessId: string,
   ): Promise<BusinessUserResponse[]> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
     return this.prisma.businessUser.findMany({
       where: { businessId },
       include: {
@@ -125,14 +106,8 @@ export class BusinessUserService {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
     });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
 
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes modificar usuarios de un negocio inactivado',
-      );
-
-    if (membership.userId === business.ownerId) {
+    if (membership.userId === business?.ownerId) {
       throw new ForbiddenException(
         'No puedes modificar el rol del propietario del negocio',
       );
@@ -188,14 +163,8 @@ export class BusinessUserService {
     const business = await this.prisma.business.findUnique({
       where: { id: businessId },
     });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
 
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes eliminar usuarios de un negocio inactivado',
-      );
-
-    if (membership.userId === business.ownerId) {
+    if (membership.userId === business?.ownerId) {
       throw new ForbiddenException(
         'No puedes eliminar al propietario del negocio',
       );

@@ -16,9 +16,10 @@ import { CurrentBusiness } from 'src/common/decorators/current-business.decorato
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
+import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
 
 @Controller('business-users')
-@UseGuards(JwtAuthGuard, BusinessRoleGuard)
+@UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
 export class BusinessUserController {
   constructor(private readonly businessUserService: BusinessUserService) {}
 
@@ -32,9 +33,9 @@ export class BusinessUserController {
     return this.businessUserService.addUserToBusiness(businessId, dto, addBy);
   }
 
-  @Get(':businessId')
+  @Get()
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER', 'VIEWER')
-  async findAll(@Param('businessId') businessId: string) {
+  async findAll(@CurrentBusiness() businessId: string) {
     return this.businessUserService.getUsersByBusiness(businessId);
   }
 

@@ -140,7 +140,7 @@ export class BusinessService {
     return updated;
   }
 
-  async remove(id: string, userId: string) {
+  async inactivate(id: string, userId: string) {
     const business = await this.prisma.business.findUnique({
       where: { id },
       include: {
@@ -162,7 +162,6 @@ export class BusinessService {
       throw new BadRequestException('El negocio ya está inactivo');
     }
 
-    // 🔴 Regla opcional (recomendada)
     const hasActiveDebts = business.debts.some(
       (d) => d.status !== 'PAID' && d.status !== 'CANCELLED',
     );

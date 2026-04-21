@@ -23,18 +23,6 @@ export class DebtorsService {
     currentUserId: string,
     data: CreateDebtorDto,
   ): Promise<Debtor> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt) {
-      throw new BadRequestException(
-        'No se pueden agregar deudores a un negocio inactivado',
-      );
-    }
-
     // Buscar si ya existe un user con los datos del deudor
     const existingUser = await this.prisma.user.findFirst({
       where: {
@@ -88,16 +76,6 @@ export class DebtorsService {
   }
 
   async findAll(businessId: string): Promise<Debtor[]> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
-
     return this.prisma.debtor.findMany({
       where: { businessId, inactivatedAt: null },
       include: {
@@ -108,15 +86,6 @@ export class DebtorsService {
   }
 
   async findOne(id: string, businessId: string): Promise<Debtor> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
     const debtor = await this.prisma.debtor.findUnique({
       where: { id, businessId },
       include: {
@@ -140,16 +109,6 @@ export class DebtorsService {
     currentUserId: string,
     data: UpdateDebtorDto,
   ): Promise<Debtor> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
-
     const debtor = await this.prisma.debtor.findUnique({
       where: { id, businessId },
     });
@@ -157,6 +116,10 @@ export class DebtorsService {
 
     if (debtor.inactivatedAt)
       throw new NotFoundException('Deudor se encuentra inactivado');
+
+    if (debtor.businessId !== businessId) {
+      throw new NotFoundException('Deudor no encontrado en este negocio');
+    }
 
     const updated = await this.prisma.debtor.update({
       where: { id },
@@ -183,20 +146,11 @@ export class DebtorsService {
     return updated;
   }
 
-  async remove(
+  async inactivate(
     id: string,
     businessId: string,
     currentUserId: string,
   ): Promise<{ message: string }> {
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
-
-    if (business.inactivatedAt)
-      throw new BadRequestException(
-        'No puedes agregar usuarios a un negocio inactivado',
-      );
     const debtor = await this.prisma.debtor.findUnique({
       where: { id, businessId },
       include: { debts: true },

@@ -45,4 +45,11 @@ export class BusinessController {
   ) {
     return this.businessService.update(id, dto, userId);
   }
+
+  @Patch(':id/inactivate')
+  @UseGuards(BusinessRoleGuard)
+  @BusinessRoles('OWNER')
+  inactivate(@Param('id') id: string, @GetUser('id') userId: string) {
+    return this.businessService.inactivate(id, userId);
+  }
 }

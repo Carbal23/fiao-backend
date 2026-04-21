@@ -3,7 +3,6 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   UseGuards,
@@ -15,16 +14,18 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
 import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
+import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
 
-@UseGuards(JwtAuthGuard, BusinessRoleGuard)
-@Controller('business/:businessId/debtors')
+@UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
+@Controller('debtors')
 export class DebtorsController {
   constructor(private readonly debtorsService: DebtorsService) {}
 
   @Post()
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER')
   create(
-    @Param('businessId') businessId: string,
+    @CurrentBusiness('businessId') businessId: string,
     @GetUser('id') currentUserId: string,
     @Body() data: CreateDebtorDto,
   ) {
@@ -32,12 +33,15 @@ export class DebtorsController {
   }
 
   @Get()
-  findAll(@Param('businessId') businessId: string) {
+  findAll(@CurrentBusiness('businessId') businessId: string) {
     return this.debtorsService.findAll(businessId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Param('businessId') businessId: string) {
+  findOne(
+    @Param('id') id: string,
+    @CurrentBusiness('businessId') businessId: string,
+  ) {
     return this.debtorsService.findOne(id, businessId);
   }
 
@@ -45,20 +49,20 @@ export class DebtorsController {
   @BusinessRoles('ADMIN', 'OWNER')
   update(
     @Param('id') id: string,
-    @Param('businessId') businessId: string,
+    @CurrentBusiness('businessId') businessId: string,
     @GetUser('id') currentUserId: string,
     @Body() data: UpdateDebtorDto,
   ) {
     return this.debtorsService.update(id, businessId, currentUserId, data);
   }
 
-  @Delete(':id')
+  @Patch(':id/inactivate')
   @BusinessRoles('ADMIN', 'OWNER')
-  remove(
+  inactivate(
     @Param('id') id: string,
-    @Param('businessId') businessId: string,
+    @CurrentBusiness('businessId') businessId: string,
     @GetUser('id') currentUserId: string,
   ) {
-    return this.debtorsService.remove(id, businessId, currentUserId);
+    return this.debtorsService.inactivate(id, businessId, currentUserId);
   }
 }

@@ -15,8 +15,10 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
+import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
+import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
 
-@UseGuards(JwtAuthGuard, BusinessRoleGuard)
+@UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
 @Controller()
 export class DebtsController {
   constructor(private readonly debtsService: DebtsService) {}
@@ -26,13 +28,13 @@ export class DebtsController {
   create(
     @Body() dto: CreateDebtDto,
     @GetUser('id') userId: string,
-    @Headers('x-business-id') businessId: string,
+    @CurrentBusiness('businessId') businessId: string,
   ) {
     return this.debtsService.create(dto, userId, businessId);
   }
 
-  @Get('business/:businessId/debts')
-  findByBusiness(@Param('businessId') businessId: string) {
+  @Get('debts')
+  findByBusiness(@CurrentBusiness('businessId') businessId: string) {
     return this.debtsService.findByBusiness(businessId);
   }
 

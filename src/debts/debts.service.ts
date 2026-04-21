@@ -14,17 +14,8 @@ export class DebtsService {
     private readonly auditService: AuditService,
   ) {}
 
-  async create(
-    createDto: CreateDebtDto,
-    userId: string,
-    businessIdFromHeader: string,
-  ) {
+  async create(createDto: CreateDebtDto, userId: string, businessId: string) {
     const { debtorId, amount, description, dueDate } = createDto;
-
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessIdFromHeader },
-    });
-    if (!business) throw new NotFoundException('Negocio no encontrado');
 
     const debtor = await this.prisma.debtor.findUnique({
       where: { id: debtorId },
@@ -33,7 +24,7 @@ export class DebtsService {
 
     const debt = await this.prisma.debt.create({
       data: {
-        businessId: businessIdFromHeader,
+        businessId,
         debtorId,
         amount: new Prisma.Decimal(amount),
         balance: new Prisma.Decimal(amount),
@@ -52,7 +43,7 @@ export class DebtsService {
       meta: {
         amount,
         debtorId,
-        businessId: businessIdFromHeader,
+        businessId,
       },
     });
 
