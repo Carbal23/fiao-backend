@@ -6,21 +6,18 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
-import { PaymentMethod, PaymentType } from '@prisma/client';
+import { PaymentMethod } from '@prisma/client';
 
-export class CreatePaymentDto {
+export class CreateGlobalPaymentDto {
   @IsUUID()
   @IsNotEmpty()
-  debtId!: string;
+  debtorId!: string;
 
   @IsNumber()
   amount!: number;
 
   @IsEnum(PaymentMethod)
   method!: PaymentMethod;
-
-  @IsEnum(PaymentType)
-  type!: PaymentType;
 
   @IsOptional()
   @IsString()
