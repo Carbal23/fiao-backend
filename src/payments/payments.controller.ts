@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards, Get, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -8,6 +16,7 @@ import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
 import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
 import { CreateGlobalPaymentDto } from './dto/create-global-payment.dto';
+import { QueryPaymentDto } from './dto/query-payment.dto';
 
 @UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
 @Controller()
@@ -48,8 +57,16 @@ export class PaymentsController {
     );
   }
 
+  @Get('payments')
+  findAll(
+    @CurrentBusiness('businessId') businessId: string,
+    @Query() query: QueryPaymentDto,
+  ) {
+    return this.paymentsService.findAll(businessId, query);
+  }
+
   @Get('debts/:debtId/payments')
-  findByDebt(@Param('debtId') debtId: string) {
-    return this.paymentsService.findByDebt(debtId);
+  findByDebt(@Param('debtId') debtId: string, @Query() query: QueryPaymentDto) {
+    return this.paymentsService.findByDebt(debtId, query);
   }
 }

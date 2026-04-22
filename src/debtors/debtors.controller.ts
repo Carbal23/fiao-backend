@@ -6,6 +6,7 @@ import {
   Body,
   Param,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { DebtorsService } from './debtors.service';
 import { CreateDebtorDto } from './dto/create-debtor.dto';
@@ -16,6 +17,7 @@ import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
 import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
 
 @UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
 @Controller('debtors')
@@ -33,8 +35,11 @@ export class DebtorsController {
   }
 
   @Get()
-  findAll(@CurrentBusiness('businessId') businessId: string) {
-    return this.debtorsService.findAll(businessId);
+  findAll(
+    @CurrentBusiness('businessId') businessId: string,
+    @Query() query: PaginationDto,
+  ) {
+    return this.debtorsService.findAll(businessId, query);
   }
 
   @Get(':id')

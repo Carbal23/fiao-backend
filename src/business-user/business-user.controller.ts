@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { BusinessUserService } from './business-user.service';
@@ -17,6 +18,7 @@ import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
 import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
 
 @Controller('business-users')
 @UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
@@ -35,8 +37,11 @@ export class BusinessUserController {
 
   @Get()
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER', 'VIEWER')
-  async findAll(@CurrentBusiness() businessId: string) {
-    return this.businessUserService.getUsersByBusiness(businessId);
+  async findAll(
+    @CurrentBusiness() businessId: string,
+    @Query() query: PaginationDto,
+  ) {
+    return this.businessUserService.getUsersByBusiness(businessId, query);
   }
 
   @Patch(':id')

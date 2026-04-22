@@ -10,6 +10,9 @@ import { PaymentType, DebtStatus, Prisma } from '@prisma/client';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
 import { CreateGlobalPaymentDto } from './dto/create-global-payment.dto';
+import { QueryPaymentDto } from './dto/query-payment.dto';
+import { buildWhere } from 'src/common/pagination/utils/build-where.util';
+import { paginate } from 'src/common/pagination/utils/paginate.util';
 
 @Injectable()
 export class PaymentsService {
@@ -375,11 +378,51 @@ export class PaymentsService {
     });
   }
 
-  async findByDebt(debtId: string) {
-    return this.prisma.payment.findMany({
-      where: { debtId },
-      orderBy: { paymentDate: 'desc' },
-      select: paymentSelect,
+  async findAll(businessId: string, query: QueryPaymentDto) {
+    const { page = 1, limit = 10, type, method, search } = query;
+
+    const where = buildWhere({
+      search,
+      searchFields: ['note'],
+      filters: {
+        businessId,
+        ...(type && { type }),
+        ...(method && { method }),
+      },
     });
+
+    return paginate(
+      this.prisma.payment,
+      {
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: paymentSelect,
+      },
+      { page, limit },
+    );
+  }
+
+  async findByDebt(debtId: string, query: QueryPaymentDto) {
+    const { page = 1, limit = 10, type, method, search } = query;
+
+    const where = buildWhere({
+      search,
+      searchFields: ['note'],
+      filters: {
+        debtId,
+        ...(type && { type }),
+        ...(method && { method }),
+      },
+    });
+
+    return paginate(
+      this.prisma.payment,
+      {
+        where,
+        orderBy: { paymentDate: 'desc' },
+        select: paymentSelect,
+      },
+      { page, limit },
+    );
   }
 }

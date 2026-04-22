@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { BusinessService } from './business.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
@@ -14,6 +15,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
 import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
 
 @Controller('business')
 @UseGuards(JwtAuthGuard)
@@ -26,8 +28,8 @@ export class BusinessController {
   }
 
   @Get()
-  findAll(@GetUser('id') userId: string) {
-    return this.businessService.findAllByUser(userId);
+  findAll(@GetUser('id') userId: string, @Query() query: PaginationDto) {
+    return this.businessService.findAllByUser(userId, query);
   }
 
   @Get(':id')

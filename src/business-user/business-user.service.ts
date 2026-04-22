@@ -11,6 +11,8 @@ import { BusinessUserRole } from '@prisma/client';
 import { BusinessUserResponse } from './interfaces/business-user.interface';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
+import { paginate } from 'src/common/pagination/utils/paginate.util';
 
 @Injectable()
 export class BusinessUserService {
@@ -71,24 +73,58 @@ export class BusinessUserService {
     return newBusinessUser;
   }
 
-  async getUsersByBusiness(
-    businessId: string,
-  ): Promise<BusinessUserResponse[]> {
-    return this.prisma.businessUser.findMany({
-      where: { businessId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
+  async getUsersByBusiness(businessId: string, query: PaginationDto) {
+    const { page = 1, limit = 10, search } = query;
+
+    const where: { businessId: string; user?: any } = {
+      businessId,
+      user: {},
+    };
+
+    if (search) {
+      where.user = {
+        OR: [
+          {
+            firstName: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
+            lastName: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
+            email: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      };
+    }
+
+    return paginate(
+      this.prisma.businessUser,
+      {
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+            },
           },
         },
+        orderBy: { createdAt: 'desc' },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+      { page, limit },
+    );
   }
 
   async updateUserRole(

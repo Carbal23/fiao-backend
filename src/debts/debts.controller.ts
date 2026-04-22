@@ -7,6 +7,7 @@ import {
   Param,
   UseGuards,
   Headers,
+  Query,
 } from '@nestjs/common';
 import { DebtsService } from './debts.service';
 import { CreateDebtDto } from './dto/create-debt.dto';
@@ -17,6 +18,7 @@ import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { BusinessRoleGuard } from 'src/auth/guards/business-role.guard';
 import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
 import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
+import { QueryDebtDto } from './dto/query-debt.dto';
 
 @UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
 @Controller()
@@ -34,13 +36,19 @@ export class DebtsController {
   }
 
   @Get('debts')
-  findByBusiness(@CurrentBusiness('businessId') businessId: string) {
-    return this.debtsService.findByBusiness(businessId);
+  findByBusiness(
+    @CurrentBusiness('businessId') businessId: string,
+    @Query() query: QueryDebtDto,
+  ) {
+    return this.debtsService.findByBusiness(businessId, query);
   }
 
   @Get('debtors/:debtorId/debts')
-  findByDebtor(@Param('debtorId') debtorId: string) {
-    return this.debtsService.findByDebtor(debtorId);
+  findByDebtor(
+    @Param('debtorId') debtorId: string,
+    @Query() query: QueryDebtDto,
+  ) {
+    return this.debtsService.findByDebtor(debtorId, query);
   }
 
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER')

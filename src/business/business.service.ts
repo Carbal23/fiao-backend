@@ -10,6 +10,9 @@ import { UpdateBusinessDto } from './dto/update-business.dto';
 import { BusinessUserRole } from '@prisma/client';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
+import { buildWhere } from 'src/common/pagination/utils/build-where.util';
+import { paginate } from 'src/common/pagination/utils/paginate.util';
 
 @Injectable()
 export class BusinessService {
@@ -50,27 +53,39 @@ export class BusinessService {
     });
   }
 
-  async findAllByUser(userId: string) {
-    return this.prisma.business.findMany({
-      where: {
+  async findAllByUser(userId: string, query: PaginationDto) {
+    const { page = 1, limit = 10, search } = query;
+
+    const where = buildWhere({
+      search,
+      searchFields: ['name'],
+      filters: {
         OR: [{ ownerId: userId }, { businessUsers: { some: { userId } } }],
       },
-      include: {
-        businessUsers: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
+    });
+
+    return paginate(
+      this.prisma.business,
+      {
+        where,
+        include: {
+          businessUsers: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
               },
             },
           },
         },
+        orderBy: { createdAt: 'desc' },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+      { page, limit },
+    );
   }
 
   async findOne(id: string, userId: string) {

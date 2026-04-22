@@ -10,6 +10,10 @@ import { Debtor } from '@prisma/client';
 import { userSafeSelect } from 'src/users/user.select';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
+import { buildWhere } from 'src/common/pagination/utils/build-where.util';
+import { paginate } from 'src/common/pagination/utils/paginate.util';
+import { buildOrder } from 'src/common/pagination/utils/build-order.util';
 
 @Injectable()
 export class DebtorsService {
@@ -75,14 +79,29 @@ export class DebtorsService {
     return debtor;
   }
 
-  async findAll(businessId: string): Promise<Debtor[]> {
-    return this.prisma.debtor.findMany({
-      where: { businessId, inactivatedAt: null },
-      include: {
-        user: { select: userSafeSelect },
+  async findAll(businessId: string, query: PaginationDto) {
+    const { page = 1, limit = 10, search, sortBy, order } = query;
+
+    const where = buildWhere({
+      search,
+      searchFields: ['name', 'phone', 'documentNumber'],
+      filters: {
+        businessId,
+        inactivatedAt: null,
       },
-      orderBy: { createdAt: 'desc' },
     });
+
+    return paginate(
+      this.prisma.debtor,
+      {
+        where,
+        include: {
+          user: { select: userSafeSelect },
+        },
+        orderBy: buildOrder(sortBy, order),
+      },
+      { page, limit },
+    );
   }
 
   async findOne(id: string, businessId: string): Promise<Debtor> {
