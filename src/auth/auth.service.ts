@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -65,27 +70,22 @@ export class AuthService {
     return token;
   }
 
-  private async createOrReuseRefreshToken(userId: string, deviceInfo?: string) {
+  private async createRefreshToken(userId: string, deviceInfo?: string) {
     const days = parseInt(
       this.config.get<string>('jwt.refreshTokenExpiresDays') || '30',
       10,
     );
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    const existing = await this.prisma.refreshToken.findFirst({
+    await this.prisma.refreshToken.deleteMany({
       where: {
         userId,
         deviceInfo: deviceInfo ?? null,
-        expiresAt: { gt: new Date() },
       },
     });
 
-    if (existing) {
-      return { token: existing, raw: null, reused: true };
-    }
-
-    // Generar uno nuevo
-    const raw = randomBytes(64).toString('hex');
+    const rawToken = randomBytes(64).toString('hex');
+    const refreshToken = `${userId}.${rawToken}`;
     const rounds = parseInt(
       this.config.get<string>('jwt.refreshTokenHashRounds') || '10',
       10,
@@ -95,13 +95,13 @@ export class AuthService {
         data: string,
         rounds: number | string,
       ) => Promise<string>
-    )(raw, rounds);
+    )(rawToken, rounds);
 
     const token = await this.prisma.refreshToken.create({
       data: { userId, tokenHash: hash, expiresAt, deviceInfo },
     });
 
-    return { token, raw, reused: false };
+    return { token, refreshToken, reused: false };
   }
 
   async login(dto: LoginDto): Promise<TokenResponseDto> {
@@ -109,12 +109,11 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Credenciales inválidas');
 
     const accessToken = await this.signAccessToken(user);
-    const { token, raw } = await this.createOrReuseRefreshToken(
+    const { token, refreshToken } = await this.createRefreshToken(
       user.id,
       dto.deviceInfo,
     );
 
-    const refreshToken = raw ?? '';
     const safeUser = serializeUser(user);
 
     return {
@@ -127,10 +126,15 @@ export class AuthService {
   }
 
   async refreshTokens(
-    userId: string,
     presentedRefreshToken: string,
     deviceInfo?: string,
   ): Promise<TokenResponseDto> {
+    const [userId, rawToken] = presentedRefreshToken.split('.');
+
+    if (!userId || !rawToken) {
+      throw new UnauthorizedException('Token inválido');
+    }
+
     const dbTokens = await this.prisma.refreshToken.findMany({
       where: {
         userId,
@@ -149,7 +153,7 @@ export class AuthService {
         a: string,
         b: string,
       ) => Promise<boolean>;
-      const isMatch = await compareFn(presentedRefreshToken, dbToken.tokenHash);
+      const isMatch = await compareFn(rawToken, dbToken.tokenHash);
       if (isMatch) {
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
@@ -174,10 +178,18 @@ export class AuthService {
   }
 
   async logout(
-    userId: string,
-    presentedRefreshToken?: string,
+    presentedRefreshToken: string,
     allDevices = false,
   ): Promise<{ message: string }> {
+    if (!presentedRefreshToken) {
+      throw new BadRequestException('Refresh token no enviado');
+    }
+
+    const [userId, rawToken] = presentedRefreshToken.split('.');
+
+    if (!userId || !rawToken) {
+      throw new UnauthorizedException('Token inválido');
+    }
     if (allDevices) {
       await this.prisma.refreshToken.deleteMany({ where: { userId } });
       return { message: 'Sesiones cerradas en todos los dispositivos' };
@@ -192,10 +204,7 @@ export class AuthService {
           a: string,
           b: string,
         ) => Promise<boolean>;
-        const isMatch = await compareFn(
-          presentedRefreshToken,
-          dbToken.tokenHash,
-        );
+        const isMatch = await compareFn(rawToken, dbToken.tokenHash);
         if (isMatch) {
           await this.prisma.refreshToken.delete({ where: { id: dbToken.id } });
           return { message: 'Logout realizado' };

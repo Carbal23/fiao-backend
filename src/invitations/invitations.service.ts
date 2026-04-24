@@ -13,6 +13,10 @@ import { randomBytes } from 'crypto';
 import { EmailProvider } from 'src/providers/email.provider';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
+import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
+import { buildWhere } from 'src/common/pagination/utils/build-where.util';
+import { buildOrder } from 'src/common/pagination/utils/build-order.util';
+import { paginate } from 'src/common/pagination/utils/paginate.util';
 
 @Injectable()
 export class InvitationsService {
@@ -193,11 +197,31 @@ export class InvitationsService {
     return { message: 'Invitación aceptada correctamente' };
   }
 
-  async listByBusiness(businessId: string) {
-    return this.prisma.invitation.findMany({
-      where: { businessId },
-      select: invitationSelect,
-      orderBy: { createdAt: 'desc' },
+  async listByBusiness(businessId: string, query: PaginationDto) {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'createdAt',
+      order = 'desc',
+    } = query;
+
+    const where = buildWhere({
+      search,
+      searchFields: ['code', 'email', 'phone'],
+      filters: {
+        businessId,
+      },
     });
+
+    return paginate(
+      this.prisma.invitation,
+      {
+        where,
+        select: invitationSelect,
+        orderBy: buildOrder(sortBy, order),
+      },
+      { page, limit },
+    );
   }
 }

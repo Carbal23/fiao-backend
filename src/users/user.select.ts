@@ -10,6 +10,7 @@ export const userSafeSelect = {
   documentType: true,
   documentNumber: true,
   createdAt: true,
+  updatedAt: true,
 } satisfies Prisma.UserSelect;
 
 export const userFullSelect = {

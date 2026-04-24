@@ -13,6 +13,7 @@ import { AuditAction } from 'src/audit/audit.types';
 import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
 import { buildWhere } from 'src/common/pagination/utils/build-where.util';
 import { paginate } from 'src/common/pagination/utils/paginate.util';
+import { buildOrder } from 'src/common/pagination/utils/build-order.util';
 
 @Injectable()
 export class BusinessService {
@@ -54,7 +55,13 @@ export class BusinessService {
   }
 
   async findAllByUser(userId: string, query: PaginationDto) {
-    const { page = 1, limit = 10, search } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'createdAt',
+      order = 'desc',
+    } = query;
 
     const where = buildWhere({
       search,
@@ -82,7 +89,7 @@ export class BusinessService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: buildOrder(sortBy, order),
       },
       { page, limit },
     );
@@ -100,6 +107,7 @@ export class BusinessService {
                 firstName: true,
                 lastName: true,
                 email: true,
+                phone: true,
               },
             },
           },

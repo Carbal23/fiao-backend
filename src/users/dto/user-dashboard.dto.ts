@@ -1,26 +1,54 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class BusinessSummaryDto {
-  id: string;
-  name: string;
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty({ required: false, nullable: true })
   address?: string | null;
-  currency: string;
+
+  @ApiProperty()
+  currency!: string;
+
+  @ApiProperty({ required: false })
   createdAt?: Date;
 }
 
 export class WorkingBusinessDto {
-  id: string;
-  role: string;
-  business: BusinessSummaryDto;
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  role!: string;
+
+  @ApiProperty({ type: BusinessSummaryDto })
+  business!: BusinessSummaryDto;
 }
 
 export class ClientBusinessDto {
-  id: string;
-  name: string;
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  name!: string;
+
+  @ApiProperty({ required: false, nullable: true })
   phone?: string | null;
-  business: BusinessSummaryDto;
+
+  @ApiProperty({ type: BusinessSummaryDto })
+  business!: BusinessSummaryDto;
 }
 
 export class UserDashboardDto {
-  ownedBusinesses: BusinessSummaryDto[];
-  workingBusinesses: WorkingBusinessDto[];
-  clientBusinesses: ClientBusinessDto[];
+  @ApiProperty({ type: [BusinessSummaryDto] })
+  ownedBusinesses!: BusinessSummaryDto[];
+
+  @ApiProperty({ type: [WorkingBusinessDto] })
+  workingBusinesses!: WorkingBusinessDto[];
+
+  @ApiProperty({ type: [ClientBusinessDto] })
+  clientBusinesses!: ClientBusinessDto[];
 }

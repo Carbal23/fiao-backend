@@ -1,11 +1,9 @@
-import { IsEnum, IsOptional, IsNumber } from 'class-validator';
+import { IsEnum } from 'class-validator';
 import { DebtStatus } from '@prisma/client';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateDebtStatusDto {
+  @ApiProperty({ example: 'PAID' })
   @IsEnum(DebtStatus)
-  status: DebtStatus;
-
-  @IsOptional()
-  @IsNumber()
-  balance?: number; // opcional por si se requiere ajuste manual
+  status!: DebtStatus;
 }

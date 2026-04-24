@@ -13,6 +13,7 @@ import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
 import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
 import { paginate } from 'src/common/pagination/utils/paginate.util';
+import { buildOrder } from 'src/common/pagination/utils/build-order.util';
 
 @Injectable()
 export class BusinessUserService {
@@ -74,7 +75,13 @@ export class BusinessUserService {
   }
 
   async getUsersByBusiness(businessId: string, query: PaginationDto) {
-    const { page = 1, limit = 10, search } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'createdAt',
+      order = 'desc',
+    } = query;
 
     const where: { businessId: string; user?: any } = {
       businessId,
@@ -121,7 +128,7 @@ export class BusinessUserService {
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: buildOrder(sortBy, order),
       },
       { page, limit },
     );

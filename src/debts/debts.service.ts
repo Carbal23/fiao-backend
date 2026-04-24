@@ -7,13 +7,14 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDebtDto } from './dto/create-debt.dto';
 import { UpdateDebtStatusDto } from './dto/update-debt-status.dto';
 import { debtSelect } from './debt.select';
-import { Prisma } from '@prisma/client';
+import { DebtStatus, Prisma } from '@prisma/client';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
 import { buildWhere } from 'src/common/pagination/utils/build-where.util';
 import { paginate } from 'src/common/pagination/utils/paginate.util';
 import { buildOrder } from 'src/common/pagination/utils/build-order.util';
 import { QueryDebtDto } from './dto/query-debt.dto';
+import { validTransitions } from './utils/stateValidTransitions';
 
 @Injectable()
 export class DebtsService {
@@ -140,11 +141,26 @@ export class DebtsService {
     const debt = await this.prisma.debt.findUnique({ where: { id } });
     if (!debt) throw new NotFoundException('Deuda no encontrada');
 
+    if (!validTransitions[debt.status].includes(updateDto.status)) {
+      throw new BadRequestException('Transición de estado inválida');
+    }
+
+    if (updateDto.status === DebtStatus.CANCELLED) {
+      const hasPayments = await this.prisma.payment.count({
+        where: { debtId: id },
+      });
+
+      if (hasPayments > 0) {
+        throw new BadRequestException(
+          'No puedes cancelar una deuda con pagos registrados',
+        );
+      }
+    }
+
     const updated = await this.prisma.debt.update({
       where: { id },
       data: {
         status: updateDto.status,
-        balance: updateDto.balance ?? debt.balance,
       },
       select: debtSelect,
     });
@@ -157,8 +173,6 @@ export class DebtsService {
       meta: {
         previousStatus: debt.status,
         newStatus: updateDto.status,
-        previousBalance: debt.balance.toNumber(),
-        newBalance: updateDto.balance ?? debt.balance.toNumber(),
       },
     });
 

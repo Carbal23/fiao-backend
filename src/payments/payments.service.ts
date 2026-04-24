@@ -13,6 +13,7 @@ import { CreateGlobalPaymentDto } from './dto/create-global-payment.dto';
 import { QueryPaymentDto } from './dto/query-payment.dto';
 import { buildWhere } from 'src/common/pagination/utils/build-where.util';
 import { paginate } from 'src/common/pagination/utils/paginate.util';
+import { buildOrder } from 'src/common/pagination/utils/build-order.util';
 
 @Injectable()
 export class PaymentsService {
@@ -57,6 +58,12 @@ export class PaymentsService {
     if (type === PaymentType.PAYMENT && amount > balance) {
       throw new BadRequestException(
         `El pago no puede ser mayor al saldo actual (${balance})`,
+      );
+    }
+
+    if (debt.status === DebtStatus.CANCELLED) {
+      throw new BadRequestException(
+        'La deuda fue cancelada, no se pueden registrar pagos',
       );
     }
 
@@ -113,6 +120,12 @@ export class PaymentsService {
     });
 
     if (!debt) throw new NotFoundException('Deuda no encontrada');
+
+    if (debt.status === DebtStatus.CANCELLED) {
+      throw new BadRequestException(
+        'No se pueden recalcular deudas canceladas',
+      );
+    }
 
     const baseAmount = debt.amount.toNumber();
 
@@ -219,12 +232,19 @@ export class PaymentsService {
       });
 
       let remaining = amount;
-      const paymentsResponse: any[] = [];
+      const paymentsResponse: {
+        paymentId: string;
+        debtId: string;
+        appliedAmount: number;
+        previousBalance: number;
+        newBalance: number | undefined;
+        status: DebtStatus | undefined;
+      }[] = [];
 
       for (const debt of debts) {
         if (remaining <= 0) break;
 
-        const previousBalance = debt.balance.toNumber();
+        const previousBalance: number = debt.balance.toNumber();
         const paymentAmount = Math.min(remaining, previousBalance);
 
         const payment = await tx.payment.create({
@@ -264,7 +284,6 @@ export class PaymentsService {
         remaining -= paymentAmount;
       }
 
-      // 5. Audit log (una sola entrada global, no por cada payment)
       await this.auditService.log({
         userId,
         action: AuditAction.PAYMENT_CREATED,
@@ -403,7 +422,7 @@ export class PaymentsService {
   }
 
   async findByDebt(debtId: string, query: QueryPaymentDto) {
-    const { page = 1, limit = 10, type, method, search } = query;
+    const { page = 1, limit = 10, type, method, search, sortBy, order } = query;
 
     const where = buildWhere({
       search,
@@ -419,7 +438,7 @@ export class PaymentsService {
       this.prisma.payment,
       {
         where,
-        orderBy: { paymentDate: 'desc' },
+        orderBy: buildOrder(sortBy, order),
         select: paymentSelect,
       },
       { page, limit },
