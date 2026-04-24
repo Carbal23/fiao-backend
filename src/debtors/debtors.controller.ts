@@ -26,14 +26,15 @@ import { DebtorDetailResponseDto } from './dto/debtor-detail-response.dto';
 import { ApiAuth } from 'src/common/swagger/auth.decorator';
 
 @ApiTags('Debtors')
-@UseGuards(JwtAuthGuard, BusinessContextGuard, BusinessRoleGuard)
+@UseGuards(JwtAuthGuard, BusinessRoleGuard)
 @ApiAuth()
-@BusinessProtected()
 @Controller('debtors')
 export class DebtorsController {
   constructor(private readonly debtorsService: DebtorsService) {}
 
   @Post()
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER')
   @ApiOperation({ summary: 'Crear deudor' })
   @ApiResponse({
@@ -55,6 +56,8 @@ export class DebtorsController {
   }
 
   @Get()
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
   @ApiOperation({ summary: 'Listar deudores del negocio' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
@@ -73,7 +76,25 @@ export class DebtorsController {
     return this.debtorsService.findAll(businessId, query);
   }
 
+  @Get('me/all')
+  @ApiOperation({ summary: 'Listar todos los deudores del usuario' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'sortBy', required: false })
+  @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado global de deudores del usuario',
+    type: PaginatedDebtorResponseDto,
+  })
+  findAllByUser(@GetUser('id') userId: string, @Query() query: PaginationDto) {
+    return this.debtorsService.findAllByUser(userId, query);
+  }
+
   @Get(':id')
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
   @ApiOperation({ summary: 'Obtener detalle de deudor' })
   @ApiResponse({
     status: 200,
@@ -90,6 +111,8 @@ export class DebtorsController {
 
   @Patch(':id')
   @BusinessRoles('ADMIN', 'OWNER')
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
   @ApiOperation({ summary: 'Actualizar deudor' })
   @ApiResponse({
     status: 200,
@@ -111,6 +134,8 @@ export class DebtorsController {
 
   @Patch(':id/inactivate')
   @BusinessRoles('ADMIN', 'OWNER')
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
   @ApiOperation({ summary: 'Inactivar deudor' })
   @ApiResponse({
     status: 200,

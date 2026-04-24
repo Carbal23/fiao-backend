@@ -104,6 +104,53 @@ export class DebtorsService {
     );
   }
 
+  async findAllByUser(userId: string, query: PaginationDto) {
+    const { page = 1, limit = 10, search, sortBy, order } = query;
+
+    const memberships = await this.prisma.businessUser.findMany({
+      where: { userId },
+      select: { businessId: true },
+    });
+
+    const businessIds = memberships.map((m) => m.businessId);
+
+    if (!businessIds.length) {
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0,
+        },
+      };
+    }
+
+    const where = buildWhere({
+      search,
+      searchFields: ['name', 'phone', 'documentNumber'],
+      filters: {
+        businessId: { in: businessIds },
+        inactivatedAt: null,
+      },
+    });
+
+    return paginate(
+      this.prisma.debtor,
+      {
+        where,
+        include: {
+          business: {
+            select: { id: true, name: true },
+          },
+          user: { select: userSafeSelect },
+        },
+        orderBy: buildOrder(sortBy, order),
+      },
+      { page, limit },
+    );
+  }
+
   async findOne(id: string, businessId: string): Promise<Debtor> {
     const debtor = await this.prisma.debtor.findUnique({
       where: { id, businessId },
