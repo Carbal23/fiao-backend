@@ -40,4 +40,14 @@ export class DebtorResponseDto {
     nullable: true,
   })
   inactivatedAt!: Date | null;
+
+  @ApiProperty({
+    description: 'Balance total de deudas abiertas o parciales del deudor',
+  })
+  totalBalance!: number;
+
+  @ApiProperty({
+    description: 'Indica si el deudor tiene deudas abiertas o parciales',
+  })
+  hasPendingDebt!: boolean;
 }

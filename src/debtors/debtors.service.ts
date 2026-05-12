@@ -6,7 +6,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDebtorDto } from './dto/create-debtor.dto';
 import { UpdateDebtorDto } from './dto/update-debtor.dto';
-import { Debtor } from '@prisma/client';
+import { Debtor, Prisma } from '@prisma/client';
 import { userSafeSelect } from 'src/users/user.select';
 import { AuditService } from 'src/audit/audit.service';
 import { AuditAction } from 'src/audit/audit.types';
@@ -135,7 +135,7 @@ export class DebtorsService {
       },
     });
 
-    return paginate(
+    const result = await paginate(
       this.prisma.debtor,
       {
         where,
@@ -144,11 +144,43 @@ export class DebtorsService {
             select: { id: true, name: true },
           },
           user: { select: userSafeSelect },
+          debts: {
+            where: {
+              status: {
+                in: ['OPEN', 'PARTIAL'],
+              },
+            },
+            select: {
+              balance: true,
+            },
+          },
         },
         orderBy: buildOrder(sortBy, order),
       },
       { page, limit },
     );
+
+    const data = result.data as Array<
+      Debtor & {
+        debts: { balance: Prisma.Decimal }[];
+      }
+    >;
+
+    return {
+      ...result,
+      data: data.map(({ debts, ...debtor }) => {
+        const totalBalance = debts.reduce(
+          (acc, debt) => acc + debt.balance.toNumber(),
+          0,
+        );
+
+        return {
+          ...debtor,
+          totalBalance,
+          hasPendingDebt: totalBalance > 0,
+        };
+      }),
+    };
   }
 
   async findOne(id: string, businessId: string): Promise<Debtor> {
