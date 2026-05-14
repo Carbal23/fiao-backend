@@ -91,17 +91,49 @@ export class DebtorsService {
       },
     });
 
-    return paginate(
+    const result = await paginate(
       this.prisma.debtor,
       {
         where,
         include: {
           user: { select: userSafeSelect },
+          debts: {
+            where: {
+              status: {
+                in: ['OPEN', 'PARTIAL'],
+              },
+            },
+            select: {
+              balance: true,
+            },
+          },
         },
         orderBy: buildOrder(sortBy, order),
       },
       { page, limit },
     );
+
+    const data = result.data as Array<
+      Debtor & {
+        debts: { balance: Prisma.Decimal }[];
+      }
+    >;
+
+    return {
+      ...result,
+      data: data.map(({ debts, ...debtor }) => {
+        const totalBalance = debts.reduce(
+          (acc, debt) => acc + debt.balance.toNumber(),
+          0,
+        );
+
+        return {
+          ...debtor,
+          totalBalance,
+          hasPendingDebt: totalBalance > 0,
+        };
+      }),
+    };
   }
 
   async findAllByUser(userId: string, query: PaginationDto) {
