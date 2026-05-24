@@ -1,3 +1,20 @@
+export const paymentSelect = {
+  id: true,
+  amount: true,
+  paymentDate: true,
+  method: true,
+  type: true,
+  note: true,
+  createdAt: true,
+  createdByUser: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
+};
+
 export const debtSelect = {
   id: true,
   amount: true,
@@ -28,5 +45,9 @@ export const debtSelect = {
       firstName: true,
       lastName: true,
     },
+  },
+  payments: {
+    select: paymentSelect,
+    orderBy: { paymentDate: 'desc' as const },
   },
 };
