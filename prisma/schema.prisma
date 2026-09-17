@@ -68,6 +68,12 @@ model Debtor {
   documentType   DocumentType?
   documentNumber String?
   notes          String?
+  /// Nombre + teléfono + documento en minúsculas y sin tildes, solo para
+  /// buscar. PostgreSQL con `mode: 'insensitive'` ignora mayúsculas pero NO
+  /// tildes, así que "jose" no encontraba a "José" — media Colombia. La
+  /// mantiene DebtorsService en create() y update(); ningún otro sitio escribe
+  /// estos tres campos.
+  searchText     String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   inactivatedAt  DateTime?

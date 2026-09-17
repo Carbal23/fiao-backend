@@ -17,12 +17,13 @@ import { BusinessRoles } from 'src/auth/decorators/business-role.decorator';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { BusinessContextGuard } from 'src/auth/guards/business-context.guard';
 import { CurrentBusiness } from 'src/common/decorators/current-business.decorator';
-import { PaginationDto } from 'src/common/pagination/dto/pagination.dto';
+import { DebtorQueryDto } from './dto/debtor-query.dto';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BusinessProtected } from 'src/common/swagger/business.decorator';
 import { DebtorResponseDto } from './dto/debtor-response.dto';
 import { PaginatedDebtorResponseDto } from './dto/paginated-debtor-response.dto';
 import { DebtorDetailResponseDto } from './dto/debtor-detail-response.dto';
+import { DebtorSummaryResponseDto } from './dto/debtor-summary-response.dto';
 import { ApiAuth } from 'src/common/swagger/auth.decorator';
 
 @ApiTags('Debtors')
@@ -64,6 +65,11 @@ export class DebtorsController {
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'hasDebt',
+    required: false,
+    description: 'true: solo con saldo. false: solo al día.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Listado de deudores',
@@ -71,7 +77,7 @@ export class DebtorsController {
   })
   findAll(
     @CurrentBusiness('businessId') businessId: string,
-    @Query() query: PaginationDto,
+    @Query() query: DebtorQueryDto,
   ) {
     return this.debtorsService.findAll(businessId, query);
   }
@@ -88,8 +94,37 @@ export class DebtorsController {
     description: 'Listado global de deudores del usuario',
     type: PaginatedDebtorResponseDto,
   })
-  findAllByUser(@GetUser('id') userId: string, @Query() query: PaginationDto) {
+  findAllByUser(@GetUser('id') userId: string, @Query() query: DebtorQueryDto) {
     return this.debtorsService.findAllByUser(userId, query);
+  }
+
+  /**
+   * Va declarado ANTES que `@Get(':id')`: Nest resuelve las rutas en orden y
+   * el comodín se tragaría "summary" como si fuera un id de deudor.
+   */
+  @Get('summary')
+  @UseGuards(BusinessContextGuard)
+  @BusinessProtected()
+  @ApiOperation({ summary: 'Totales por cobrar del negocio' })
+  @ApiQuery({ name: 'top', required: false, description: 'Tamaño del ranking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Saldo total, conteo de deudores y ranking por saldo',
+    type: DebtorSummaryResponseDto,
+  })
+  getSummary(
+    @CurrentBusiness('businessId') businessId: string,
+    @Query('top') top?: string,
+  ) {
+    // `top=0` es válido y significa "solo los totales, sin ranking": la lista
+    // de clientes pide el resumen únicamente para los contadores de sus chips
+    // y no necesita traerse deudores que no va a pintar.
+    const parsed = Number(top);
+    const size =
+      top !== undefined && Number.isInteger(parsed) && parsed >= 0
+        ? Math.min(parsed, 50)
+        : 5;
+    return this.debtorsService.getSummary(businessId, size);
   }
 
   @Get(':id')
