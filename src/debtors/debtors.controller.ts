@@ -25,6 +25,7 @@ import { PaginatedDebtorResponseDto } from './dto/paginated-debtor-response.dto'
 import { DebtorDetailResponseDto } from './dto/debtor-detail-response.dto';
 import { DebtorSummaryResponseDto } from './dto/debtor-summary-response.dto';
 import { ApiAuth } from 'src/common/swagger/auth.decorator';
+import { DebtorSummaryQueryDto } from './dto/debtor-summary-query.dto';
 
 @ApiTags('Debtors')
 @UseGuards(JwtAuthGuard, BusinessRoleGuard)
@@ -89,6 +90,11 @@ export class DebtorsController {
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'order', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'hasDebt',
+    required: false,
+    description: 'true: solo con saldo. false: solo al día.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Listado global de deudores del usuario',
@@ -98,10 +104,6 @@ export class DebtorsController {
     return this.debtorsService.findAllByUser(userId, query);
   }
 
-  /**
-   * Va declarado ANTES que `@Get(':id')`: Nest resuelve las rutas en orden y
-   * el comodín se tragaría "summary" como si fuera un id de deudor.
-   */
   @Get('summary')
   @UseGuards(BusinessContextGuard)
   @BusinessProtected()
@@ -114,17 +116,9 @@ export class DebtorsController {
   })
   getSummary(
     @CurrentBusiness('businessId') businessId: string,
-    @Query('top') top?: string,
+    @Query() query: DebtorSummaryQueryDto,
   ) {
-    // `top=0` es válido y significa "solo los totales, sin ranking": la lista
-    // de clientes pide el resumen únicamente para los contadores de sus chips
-    // y no necesita traerse deudores que no va a pintar.
-    const parsed = Number(top);
-    const size =
-      top !== undefined && Number.isInteger(parsed) && parsed >= 0
-        ? Math.min(parsed, 50)
-        : 5;
-    return this.debtorsService.getSummary(businessId, size);
+    return this.debtorsService.getSummary(businessId, query.top ?? 5);
   }
 
   @Get(':id')
@@ -171,12 +165,12 @@ export class DebtorsController {
   @BusinessRoles('ADMIN', 'OWNER')
   @UseGuards(BusinessContextGuard)
   @BusinessProtected()
-  @ApiOperation({ summary: 'Inactivar deudor' })
+  @ApiOperation({ summary: 'Inactiva deudor' })
   @ApiResponse({
     status: 200,
-    description: 'Deudor inactivado',
+    description: 'Deudor inactivo',
     schema: {
-      example: { message: 'Deudor inactivado correctamente' },
+      example: { message: 'Deudor inactivo' },
     },
   })
   @ApiResponse({

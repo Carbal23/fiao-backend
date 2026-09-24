@@ -13,62 +13,7 @@ import { AuditAction } from 'src/audit/audit.types';
 import { DebtorQueryDto } from './dto/debtor-query.dto';
 import { paginate } from 'src/common/pagination/utils/paginate.util';
 import { buildOrder } from 'src/common/pagination/utils/build-order.util';
-
-/**
- * Quita tildes y pasa a minúsculas, para que "José" y "jose" se encuentren.
- *
- * Tiene que producir exactamente lo mismo que el `translate(lower(...))` de la
- * migración `add_debtor_search_text`, o las filas viejas y las nuevas quedarían
- * normalizadas de forma distinta y la búsqueda sería incoherente.
- */
-const normalizeSearch = (value: string): string =>
-  value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-
-/** Texto indexable de un deudor: lo que el tendero puede teclear para hallarlo. */
-const buildSearchText = (fields: {
-  name?: string | null;
-  phone?: string | null;
-  documentNumber?: string | null;
-}): string =>
-  normalizeSearch(
-    [fields.name, fields.phone, fields.documentNumber]
-      .filter((part): part is string => Boolean(part))
-      .join(' '),
-  );
-
-/**
- * Filtros de listado de deudores.
- *
- * No se usa el `buildWhere` común porque este módulo necesita dos cosas que
- * aquel no sabe hacer: buscar sobre `searchText` (una sola columna ya
- * normalizada, en vez de tres `OR` sensibles a tildes) y filtrar por si el
- * deudor tiene saldo o no.
- */
-const buildDebtorWhere = (
-  base: Prisma.DebtorWhereInput,
-  search?: string,
-  hasDebt?: boolean,
-): Prisma.DebtorWhereInput => {
-  const where: Prisma.DebtorWhereInput = { ...base, inactivatedAt: null };
-
-  const term = search ? normalizeSearch(search) : '';
-  if (term.length > 0) {
-    where.searchText = { contains: term };
-  }
-
-  if (hasDebt !== undefined) {
-    const withBalance = {
-      some: {
-        status: { in: [DebtStatus.OPEN, DebtStatus.PARTIAL] },
-        balance: { gt: 0 },
-      },
-    };
-    // `none` es la negación exacta de `some`: sin deuda abierta con saldo.
-    where.debts = hasDebt ? withBalance : { none: withBalance.some };
-  }
-
-  return where;
-};
+import { buildDebtorWhere } from './utils/build-debtor-where.util';
 
 @Injectable()
 export class DebtorsService {
@@ -114,7 +59,6 @@ export class DebtorsService {
         ...data,
         businessId,
         userId: existingUser?.id ?? null,
-        searchText: buildSearchText(data),
       },
     });
 
@@ -185,18 +129,6 @@ export class DebtorsService {
     };
   }
 
-  /**
-   * Totales del negocio, agregados en la base de datos.
-   *
-   * El móvil los calculaba sumando la primera página de deudores, así que a
-   * partir de 100 clientes el "total por cobrar" de la pantalla de inicio se
-   * quedaba corto sin avisar. `limit` está topado en 100 en el PaginationDto,
-   * de modo que no se arreglaba pidiendo más: el total tiene que calcularlo
-   * quien tiene todas las filas.
-   *
-   * Se consideran deudas OPEN y PARTIAL, igual que `findAll`, y se excluyen
-   * los deudores inactivados.
-   */
   async getSummary(businessId: string, top = 5) {
     const openDebts = {
       status: { in: [DebtStatus.OPEN, DebtStatus.PARTIAL] },
@@ -210,7 +142,8 @@ export class DebtorsService {
      *
      * Con `top = 0` quien llama solo quiere los totales (la lista de clientes
      * lo usa para los contadores de sus chips), así que se ahorra la
-     * agrupación entera. El tipo va explícito porque el ternario, dentro del
+     * agrupación entera. El tipo va explícito porque el ternario, dentr
+     * o del
      * `Promise.all`, degradaba la tupla a `any`.
      */
     type RankingEntry = {
@@ -363,7 +296,7 @@ export class DebtorsService {
     if (!debtor) throw new NotFoundException('Deudor no encontrado');
 
     if (debtor.inactivatedAt)
-      throw new NotFoundException('Deudor se encuentra inactivado');
+      throw new NotFoundException('Deudor se encuentra inactivo');
 
     return debtor;
   }
@@ -380,7 +313,7 @@ export class DebtorsService {
     if (!debtor) throw new NotFoundException('Deudor no encontrado');
 
     if (debtor.inactivatedAt)
-      throw new NotFoundException('Deudor se encuentra inactivado');
+      throw new NotFoundException('Deudor se encuentra inactivo');
 
     if (debtor.businessId !== businessId) {
       throw new NotFoundException('Deudor no encontrado en este negocio');
@@ -388,17 +321,7 @@ export class DebtorsService {
 
     const updated = await this.prisma.debtor.update({
       where: { id },
-      data: {
-        ...data,
-        // El DTO es parcial, así que la columna de búsqueda se reconstruye
-        // mezclando lo que llega con lo que ya había: si solo cambia el
-        // teléfono, el nombre tiene que seguir siendo buscable.
-        searchText: buildSearchText({
-          name: data.name ?? debtor.name,
-          phone: data.phone ?? debtor.phone,
-          documentNumber: data.documentNumber ?? debtor.documentNumber,
-        }),
-      },
+      data,
     });
 
     await this.auditService.log({
@@ -408,10 +331,6 @@ export class DebtorsService {
       entityId: debtor.id,
       meta: {
         debtorId: debtor.id,
-        // Los valores anteriores salen de `debtor` (la fila tal como estaba),
-        // no de `data`: `data` es el payload entrante, o sea los valores
-        // NUEVOS. Al leerlos de ahí, "previous" y "new" guardaban lo mismo y
-        // el rastro de auditoría de estos tres campos no servía para nada.
         previousName: debtor.name,
         newName: updated.name,
         previousDocumentNumber: debtor.documentNumber,
@@ -434,8 +353,13 @@ export class DebtorsService {
       where: { id, businessId },
       include: {
         debts: {
-          where: { status: { in: [DebtStatus.OPEN, DebtStatus.PARTIAL] } },
-          select: { balance: true },
+          where: {
+            status: { in: [DebtStatus.OPEN, DebtStatus.PARTIAL] },
+            balance: {
+              gt: 0,
+            },
+          },
+          select: { id: true },
         },
       },
     });
@@ -443,20 +367,9 @@ export class DebtorsService {
     if (!debtor) throw new NotFoundException('Deudor no encontrado');
 
     if (debtor.inactivatedAt)
-      throw new NotFoundException('Deudor se encuentra inactivado');
+      throw new NotFoundException('Deudor se encuentra inactivo');
 
-    /**
-     * Las deudas ya se consultaban aquí pero nunca se miraban, así que se podía
-     * archivar a alguien que todavía debía plata. Como los totales del negocio
-     * excluyen a los deudores inactivados, ese saldo desaparecía del "total por
-     * cobrar" sin que nadie lo cancelara: una condonación silenciosa.
-     */
-    const pending = debtor.debts.reduce(
-      (total, debt) => total + debt.balance.toNumber(),
-      0,
-    );
-
-    if (pending > 0) {
+    if (debtor.debts.length > 0) {
       throw new BadRequestException(
         'No se puede inactivar un deudor con saldo pendiente. Registra el pago o cancela sus deudas primero.',
       );
@@ -480,6 +393,6 @@ export class DebtorsService {
       },
     });
 
-    return { message: 'Deudor inactivado correctamente' };
+    return { message: 'Deudor quedo inactivo correctamente' };
   }
 }
