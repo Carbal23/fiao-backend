@@ -10,10 +10,10 @@ Install a JDK 21 and Maven. The project loads `.env.local` by default; environme
 # Local PostgreSQL
 mvn spring-boot:run
 
-# Existing development database (see the safe baseline option below)
+# Development database
 FIAO_ENV_FILE=.env.development mvn spring-boot:run
 
-# Existing production database (see the safe baseline option below)
+# Production database
 FIAO_ENV_FILE=.env.production mvn spring-boot:run
 ```
 
@@ -32,6 +32,8 @@ java -jar target/fiao-backend-1.0.0.jar
 `src/main/java/com/fiao/model/` contains the complete persisted model: ten entities, their current fields and relationships, and the eight PostgreSQL enums. `src/main/resources/db/migration/V1__initial_schema.sql` creates the complete final schema for a new, empty database, including the unique `User.documentNumber` index. Flyway applies pending migrations at startup; Hibernate runs with `ddl-auto=validate` and cannot mutate the schema.
 
 For an empty database, start the application normally and Flyway creates the schema. An existing database that already has the matching final schema must be explicitly opted into Flyway baseline once by setting `FIAO_FLYWAY_BASELINE_EXISTING_SCHEMA=true`. Before baselining, startup verifies the required tables/columns, all enum labels, and the `User.documentNumber` unique index; it refuses to baseline mismatched or partial schemas. Do not set this option for an empty database or a schema that has not been fully migrated. Normal startup does not baseline an existing schema. Legacy migration records and application data are not changed; there is no reset, drop, or data-copy step.
+
+The configured development (`postgres`) and production (`postgres_prod`) databases were baselined at version 1 on 2026-10-09 after the compatibility checks passed. Start these environments normally, without `FIAO_FLYWAY_BASELINE_EXISTING_SCHEMA`; future migrations begin at `V2`.
 
 Do not enable Hibernate `create`, `create-drop`, or `update` modes. Add future schema changes as ordered Flyway migrations and update the entity mappings in the same change.
 
