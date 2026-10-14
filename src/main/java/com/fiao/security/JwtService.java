@@ -20,7 +20,7 @@ public class JwtService {
     private final String accessLifetimeText;
 
     public JwtService(@Value("${JWT_SECRET:}") String secret,
-                      @Value("${JWT_EXPIRES_IN:15m}") String expiresIn) {
+                      @Value("${JWT_EXPIRES_IN:1d}") String expiresIn) {
         this.secret = normalizeValue(secret);
         this.accessLifetime = parseDuration(normalizeValue(expiresIn));
         this.accessLifetimeText = normalizeValue(expiresIn);

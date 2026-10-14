@@ -13,6 +13,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,14 +27,17 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final int refreshDays;
+    private final PasswordEncoder refreshTokenEncoder;
 
     public AuthService(UserRepository users, RefreshTokenRepository refreshTokens, PasswordEncoder passwordEncoder,
-                       JwtService jwtService, @Value("${JWT_REFRESH_TOKEN_EXPIRES_DAYS:30}") int refreshDays) {
+                       JwtService jwtService, @Value("${REFRESH_TOKEN_EXPIRES_DAYS:30}") String refreshDays,
+                       @Value("${REFRESH_TOKEN_HASH_ROUNDS:10}") String refreshHashRounds) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.refreshDays = refreshDays;
+        this.refreshDays = parseInt("REFRESH_TOKEN_EXPIRES_DAYS", refreshDays);
+        this.refreshTokenEncoder = new BCryptPasswordEncoder(parseInt("REFRESH_TOKEN_HASH_ROUNDS", refreshHashRounds));
     }
 
     @Transactional
@@ -48,7 +52,7 @@ public class AuthService {
         RefreshToken refresh = new RefreshToken();
         refresh.setId(ApiData.id());
         refresh.setUser(user);
-        refresh.setTokenHash(passwordEncoder.encode(secret));
+        refresh.setTokenHash(refreshTokenEncoder.encode(secret));
         refresh.setExpiresAt(java.time.LocalDateTime.ofInstant(expires, java.time.ZoneOffset.UTC));
         refresh.setDeviceInfo(dto.deviceInfo());
         refreshTokens.save(refresh);
@@ -100,6 +104,14 @@ public class AuthService {
         int separator = token.indexOf('.');
         if (separator <= 0 || separator == token.length() - 1) throw ApiException.unauthorized("Token inválido");
         return new String[]{token.substring(0, separator), token.substring(separator + 1)};
+    }
+
+    private static int parseInt(String name, String value) {
+        try {
+            return Integer.parseInt(value.trim().replaceAll("^[\"']|[\"']$", "").trim());
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException("Invalid " + name + " value", exception);
+        }
     }
 
     private static String randomToken() {
