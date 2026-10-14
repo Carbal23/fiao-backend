@@ -155,8 +155,8 @@ export class AuthService {
       ) => Promise<boolean>;
       const isMatch = await compareFn(rawToken, dbToken.tokenHash);
       if (isMatch) {
-        const user = await this.prisma.user.findUnique({
-          where: { id: userId },
+        const user = await this.prisma.user.findFirst({
+          where: { id: userId, inactivatedAt: null },
         });
         if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
@@ -215,8 +215,8 @@ export class AuthService {
   }
 
   async getUserSafeById(id: string): Promise<UserSafe | null> {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+    const user = await this.prisma.user.findFirst({
+      where: { id, inactivatedAt: null },
       select: userSafeSelect,
     });
     if (!user) return null;

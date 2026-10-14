@@ -1,9 +1,13 @@
-import { PartialType } from '@nestjs/mapped-types';
+import { OmitType, PartialType } from '@nestjs/mapped-types';
 import { CreateUserDto } from './create-user.dto';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { DocumentType, Role } from '@prisma/client';
 
-export class UpdateUserDto extends PartialType(CreateUserDto) {
+// La contraseña no se cambia por aquí: va por PATCH /users/me/password, que
+// exige la contraseña actual.
+export class UpdateUserDto extends PartialType(
+  OmitType(CreateUserDto, ['password'] as const),
+) {
   @ApiPropertyOptional({ example: 'Juan', required: false })
   firstName?: string;
 
@@ -21,9 +25,6 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
 
   @ApiPropertyOptional({ example: '3001234567' })
   phone?: string;
-
-  @ApiPropertyOptional({ example: 'password123', minLength: 6 })
-  password?: string;
 
   @ApiPropertyOptional({ enum: Role, example: Role.USER })
   role?: Role;

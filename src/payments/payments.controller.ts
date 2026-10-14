@@ -152,7 +152,11 @@ export class PaymentsController {
     description: 'Pagos de la deuda',
     type: [PaymentResponseDto],
   })
-  findByDebt(@Param('debtId') debtId: string, @Query() query: QueryPaymentDto) {
-    return this.paymentsService.findByDebt(debtId, query);
+  findByDebt(
+    @Param('debtId') debtId: string,
+    @CurrentBusiness('businessId') businessId: string,
+    @Query() query: QueryPaymentDto,
+  ) {
+    return this.paymentsService.findByDebt(debtId, businessId, query);
   }
 }

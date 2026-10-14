@@ -1,15 +1,25 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserSafe, userSafeSelect } from './user.select';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+
+const ADMIN_ONLY_FIELDS = [
+  'email',
+  'phone',
+  'documentType',
+  'documentNumber',
+  'role',
+] as const;
 
 @Injectable()
 export class UsersService {
@@ -65,6 +75,7 @@ export class UsersService {
       const user = await this.prisma.user.create({
         data: {
           ...data,
+          role: Role.USER,
           password: hashedPassword,
         },
         select: userSafeSelect,
@@ -126,33 +137,87 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, data: UpdateUserDto): Promise<UserSafe> {
+  async update(
+    id: string,
+    data: UpdateUserDto,
+    actor: UserSafe,
+  ): Promise<UserSafe> {
+    this.assertCanManage(actor, id);
+
+    const restricted = ADMIN_ONLY_FIELDS.filter(
+      (field) => data[field] !== undefined,
+    );
+    if (restricted.length && actor.role !== Role.ADMIN) {
+      throw new ForbiddenException(
+        `Solo un administrador puede modificar: ${restricted.join(', ')}`,
+      );
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: userSafeSelect,
     });
     if (!user) throw new NotFoundException('User not found');
 
-    const updateData = { ...data };
-
-    if (data.password) {
-      updateData.password = await (
-        bcrypt as unknown as {
-          hash: (s: string, rounds: number) => Promise<string>;
-        }
-      ).hash(data.password, 10);
+    try {
+      return await this.prisma.user.update({
+        where: { id },
+        data,
+        select: userSafeSelect,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const field = (error.meta?.target as string[])?.join(', ');
+        throw new BadRequestException(
+          `Ya existe un usuario con el campo único: ${field}.`,
+        );
+      }
+      throw error;
     }
-
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data: updateData,
-      select: userSafeSelect,
-    });
-
-    return updated;
   }
 
-  async inactivate(id: string): Promise<{ message: string }> {
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+    if (!user?.password) throw new NotFoundException('User not found');
+
+    const matches = await (
+      bcrypt as unknown as {
+        compare: (data: string, hash: string) => Promise<boolean>;
+      }
+    ).compare(dto.currentPassword, user.password);
+    if (!matches) {
+      throw new BadRequestException('La contraseña actual no es correcta');
+    }
+
+    const hashedPassword = await (
+      bcrypt as unknown as {
+        hash: (s: string, rounds: number) => Promise<string>;
+      }
+    ).hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { password: hashedPassword },
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+    ]);
+
+    return { message: 'Contraseña actualizada correctamente' };
+  }
+
+  async inactivate(id: string, actor: UserSafe): Promise<{ message: string }> {
+    this.assertCanManage(actor, id);
+
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -164,6 +229,12 @@ export class UsersService {
     return {
       message: 'User inactivated successfully',
     };
+  }
+
+  private assertCanManage(actor: UserSafe, targetId: string) {
+    if (actor.id !== targetId && actor.role !== Role.ADMIN) {
+      throw new ForbiddenException('No puedes modificar a otro usuario');
+    }
   }
 
   async getUserDashboard(userId: string): Promise<UserDashboardDto> {

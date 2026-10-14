@@ -49,6 +49,15 @@ export class BusinessContextGuard implements CanActivate {
       throw new BadRequestException('El negocio se encuentra inactivado');
     }
 
+    const membership = await this.prisma.businessUser.findFirst({
+      where: { userId: user.id, businessId },
+      select: { id: true },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('El usuario no pertenece a este negocio');
+    }
+
     request.business = business;
 
     return true;

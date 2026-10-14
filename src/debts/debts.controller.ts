@@ -92,9 +92,10 @@ export class DebtsController {
   })
   findByDebtor(
     @Param('debtorId') debtorId: string,
+    @CurrentBusiness('businessId') businessId: string,
     @Query() query: QueryDebtDto,
   ) {
-    return this.debtsService.findByDebtor(debtorId, query);
+    return this.debtsService.findByDebtor(debtorId, businessId, query);
   }
 
   @BusinessRoles('ADMIN', 'OWNER', 'CASHIER')
@@ -107,7 +108,12 @@ export class DebtsController {
   })
   @ApiResponse({ status: 404, description: 'Deuda no encontrada' })
   @ApiResponse({ status: 400, description: 'Transición de estado inválida' })
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateDebtStatusDto) {
-    return this.debtsService.updateStatus(id, dto);
+  updateStatus(
+    @Param('id') id: string,
+    @GetUser('id') userId: string,
+    @CurrentBusiness('businessId') businessId: string,
+    @Body() dto: UpdateDebtStatusDto,
+  ) {
+    return this.debtsService.updateStatus(id, userId, businessId, dto);
   }
 }

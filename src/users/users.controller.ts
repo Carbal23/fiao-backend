@@ -2,11 +2,13 @@ import { Controller, Get, Post, Body, Param, Patch } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserResponseDto } from './dto/user-response.dto';
+import type { UserSafe } from './user.select';
 import { ApiAuth } from 'src/common/swagger/auth.decorator';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
 
@@ -62,8 +64,32 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @ApiAuth()
+  @Patch('me/password')
+  @ApiOperation({
+    summary: 'Cambiar la contraseña del usuario autenticado',
+    description:
+      'Exige la contraseña actual. Cierra todas las sesiones: los refresh tokens existentes dejan de servir.',
+  })
+  @ApiResponse({ status: 200, description: 'Contraseña actualizada' })
+  @ApiResponse({
+    status: 400,
+    description: 'La contraseña actual no es correcta o la nueva no es válida',
+  })
+  changePassword(
+    @GetUser('id') userId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.usersService.changePassword(userId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiAuth()
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar un usuario' })
+  @ApiOperation({
+    summary: 'Actualizar un usuario',
+    description:
+      'El propio usuario solo puede cambiar firstName y lastName. Correo, teléfono, documento y rol solo los cambia un administrador.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Usuario actualizado',
@@ -73,8 +99,12 @@ export class UsersController {
     status: 404,
     description: 'Usuario no encontrado',
   })
-  update(@Param('id') id: string, @Body() data: UpdateUserDto) {
-    return this.usersService.update(id, data);
+  update(
+    @Param('id') id: string,
+    @Body() data: UpdateUserDto,
+    @GetUser() actor: UserSafe,
+  ) {
+    return this.usersService.update(id, data, actor);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -89,8 +119,8 @@ export class UsersController {
     status: 404,
     description: 'Usuario no encontrado',
   })
-  inactivate(@Param('id') id: string) {
-    return this.usersService.inactivate(id);
+  inactivate(@Param('id') id: string, @GetUser() actor: UserSafe) {
+    return this.usersService.inactivate(id, actor);
   }
 
   @UseGuards(JwtAuthGuard)

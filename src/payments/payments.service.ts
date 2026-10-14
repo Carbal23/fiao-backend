@@ -34,55 +34,64 @@ export class PaymentsService {
     if (!type)
       throw new BadRequestException('El tipo de movimiento es requerido');
 
-    const debt = await this.prisma.debt.findUnique({
-      where: { id: debtId },
-      include: { payments: true },
+    // Validar, registrar el pago y recalcular el saldo dentro de una misma
+    // transacción. El `FOR UPDATE` bloquea la fila de la deuda hasta el commit:
+    // sin él, dos pagos simultáneos podían leer el mismo saldo y dejarlo mal.
+    const payment = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Debt" WHERE id = ${debtId} FOR UPDATE`;
+
+      const debt = await tx.debt.findUnique({ where: { id: debtId } });
+
+      if (!debt) throw new NotFoundException('Deuda no encontrada');
+
+      if (debt.businessId !== businessId) {
+        throw new BadRequestException(
+          'La deuda no pertenece al negocio activo',
+        );
+      }
+
+      if (debt.status === DebtStatus.PAID && type === PaymentType.PAYMENT) {
+        throw new BadRequestException('La deuda ya está saldada');
+      }
+
+      if (type === PaymentType.PAYMENT && amount <= 0) {
+        throw new BadRequestException('El abono debe ser mayor a cero');
+      }
+
+      if (
+        type === PaymentType.PAYMENT &&
+        new Prisma.Decimal(amount).gt(debt.balance)
+      ) {
+        throw new BadRequestException(
+          `El pago no puede ser mayor al saldo actual (${debt.balance.toString()})`,
+        );
+      }
+
+      if (debt.status === DebtStatus.CANCELLED) {
+        throw new BadRequestException(
+          'La deuda fue cancelada, no se pueden registrar pagos',
+        );
+      }
+
+     
+      const created = await tx.payment.create({
+        data: {
+          debtId,
+          businessId: debt.businessId,
+          amount: new Prisma.Decimal(amount),
+          method,
+          type,
+          note,
+          createdBy: userId,
+        },
+        select: paymentSelect,
+      });
+
+      // Recalcular balance y estado
+      await this.recalculateDebtBalance(debtId, userId, tx);
+
+      return created;
     });
-
-    if (!debt) throw new NotFoundException('Deuda no encontrada');
-
-    if (debt.businessId !== businessId) {
-      throw new BadRequestException('La deuda no pertenece al negocio activo');
-    }
-
-    const balance = debt.balance.toNumber();
-
-    if (debt.status === DebtStatus.PAID && type === PaymentType.PAYMENT) {
-      throw new BadRequestException('La deuda ya está saldada');
-    }
-
-    if (type === PaymentType.PAYMENT && amount <= 0) {
-      throw new BadRequestException('El abono debe ser mayor a cero');
-    }
-
-    if (type === PaymentType.PAYMENT && amount > balance) {
-      throw new BadRequestException(
-        `El pago no puede ser mayor al saldo actual (${balance})`,
-      );
-    }
-
-    if (debt.status === DebtStatus.CANCELLED) {
-      throw new BadRequestException(
-        'La deuda fue cancelada, no se pueden registrar pagos',
-      );
-    }
-
-    // Crear pago (usar Prisma.Decimal para amounts)
-    const payment = await this.prisma.payment.create({
-      data: {
-        debtId,
-        businessId: debt.businessId,
-        amount: new Prisma.Decimal(amount),
-        method,
-        type,
-        note,
-        createdBy: userId,
-      },
-      select: paymentSelect,
-    });
-
-    // Recalcular balance y estado
-    await this.recalculateDebtBalance(debtId, userId);
 
     await this.auditService.log({
       userId,
@@ -127,29 +136,33 @@ export class PaymentsService {
       );
     }
 
-    const baseAmount = debt.amount.toNumber();
+    const baseAmount = debt.amount;
 
-    // Reducir por pagos, sumar por ajustes y reversos
+    // Reducir por pagos, sumar por ajustes y reversos. Se opera con Decimal y
+    // no con `number`: la aritmética de punto flotante acumula errores de
+    // redondeo (0.1 + 0.2 !== 0.3) que terminaban en saldos con centavos de más.
     const totalAfterMovements = debt.payments.reduce((acc, p) => {
-      const amt = p.amount.toNumber();
-      if (p.type === PaymentType.PAYMENT) return acc - amt;
-      if (p.type === PaymentType.ADJUSTMENT) return acc + amt;
-      if (p.type === PaymentType.REVERSAL) return acc + amt;
+      if (p.type === PaymentType.PAYMENT) return acc.minus(p.amount);
+      if (p.type === PaymentType.ADJUSTMENT) return acc.plus(p.amount);
+      if (p.type === PaymentType.REVERSAL) return acc.plus(p.amount);
       return acc;
     }, baseAmount);
 
-    const newBalance = Math.max(Math.round(totalAfterMovements * 100) / 100, 0);
+    const newBalance = Prisma.Decimal.max(
+      totalAfterMovements.toDecimalPlaces(2),
+      0,
+    );
 
     let newStatus: DebtStatus = DebtStatus.OPEN;
-    if (newBalance === baseAmount) newStatus = DebtStatus.OPEN;
-    else if (newBalance > 0 && newBalance < baseAmount)
+    if (newBalance.equals(baseAmount)) newStatus = DebtStatus.OPEN;
+    else if (newBalance.gt(0) && newBalance.lt(baseAmount))
       newStatus = DebtStatus.PARTIAL;
-    else if (newBalance === 0) newStatus = DebtStatus.PAID;
+    else if (newBalance.isZero()) newStatus = DebtStatus.PAID;
 
     await db.debt.update({
       where: { id: debtId },
       data: {
-        balance: new Prisma.Decimal(newBalance),
+        balance: newBalance,
         status: newStatus,
       },
     });
@@ -160,13 +173,13 @@ export class PaymentsService {
       entity: 'Debt',
       entityId: debtId,
       meta: {
-        previousBalance: baseAmount,
-        newBalance,
+        previousBalance: baseAmount.toNumber(),
+        newBalance: newBalance.toNumber(),
         status: newStatus,
       },
     });
 
-    return newBalance;
+    return newBalance.toNumber();
   }
 
   async createGlobalPayment(
@@ -197,6 +210,15 @@ export class PaymentsService {
         );
       }
 
+      // Bloquear las deudas pendientes del deudor para que dos pagos globales
+      // simultáneos no repartan el mismo saldo.
+      await tx.$queryRaw`
+        SELECT id FROM "Debt"
+        WHERE "debtorId" = ${debtorId}
+          AND "businessId" = ${businessId}
+          AND status IN ('OPEN', 'PARTIAL')
+        FOR UPDATE`;
+
       const debts = await tx.debt.findMany({
         where: {
           debtorId,
@@ -214,11 +236,14 @@ export class PaymentsService {
         throw new BadRequestException('El deudor no tiene deudas pendientes');
       }
 
-      const totalDebt = debts.reduce((acc, d) => acc + d.balance.toNumber(), 0);
+      const totalDebt = debts.reduce(
+        (acc, d) => acc.plus(d.balance),
+        new Prisma.Decimal(0),
+      );
 
-      if (amount > totalDebt) {
+      if (new Prisma.Decimal(amount).gt(totalDebt)) {
         throw new BadRequestException(
-          `El monto excede la deuda total (${totalDebt})`,
+          `El monto excede la deuda total (${totalDebt.toString()})`,
         );
       }
 
@@ -231,7 +256,7 @@ export class PaymentsService {
         },
       });
 
-      let remaining = amount;
+      let remaining = new Prisma.Decimal(amount);
       const paymentsResponse: {
         paymentId: string;
         debtId: string;
@@ -242,16 +267,15 @@ export class PaymentsService {
       }[] = [];
 
       for (const debt of debts) {
-        if (remaining <= 0) break;
+        if (remaining.lte(0)) break;
 
-        const previousBalance: number = debt.balance.toNumber();
-        const paymentAmount = Math.min(remaining, previousBalance);
+        const paymentAmount = Prisma.Decimal.min(remaining, debt.balance);
 
         const payment = await tx.payment.create({
           data: {
             debtId: debt.id,
             businessId,
-            amount: new Prisma.Decimal(paymentAmount),
+            amount: paymentAmount,
             method,
             type: PaymentType.PAYMENT,
             note,
@@ -275,13 +299,13 @@ export class PaymentsService {
         paymentsResponse.push({
           paymentId: payment.id,
           debtId: debt.id,
-          appliedAmount: paymentAmount,
-          previousBalance,
+          appliedAmount: paymentAmount.toNumber(),
+          previousBalance: debt.balance.toNumber(),
           newBalance: updatedDebt?.balance.toNumber(),
           status: updatedDebt?.status,
         });
 
-        remaining -= paymentAmount;
+        remaining = remaining.minus(paymentAmount);
       }
 
       await this.auditService.log({
@@ -421,7 +445,7 @@ export class PaymentsService {
     );
   }
 
-  async findByDebt(debtId: string, query: QueryPaymentDto) {
+  async findByDebt(debtId: string, businessId: string, query: QueryPaymentDto) {
     const { page = 1, limit = 10, type, method, search, sortBy, order } = query;
 
     const where = buildWhere({
@@ -429,6 +453,7 @@ export class PaymentsService {
       searchFields: ['note'],
       filters: {
         debtId,
+        businessId,
         ...(type && { type }),
         ...(method && { method }),
       },

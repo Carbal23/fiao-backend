@@ -100,7 +100,11 @@ export class DebtsService {
     );
   }
 
-  async findByDebtor(debtorId: string, query: QueryDebtDto) {
+  async findByDebtor(
+    debtorId: string,
+    businessId: string,
+    query: QueryDebtDto,
+  ) {
     const {
       page = 1,
       limit = 10,
@@ -118,6 +122,7 @@ export class DebtsService {
       searchFields: ['description'],
       filters: {
         debtorId,
+        businessId,
         ...(status && { status }),
         ...(overdue && {
           dueDate: { lt: now },
@@ -137,8 +142,15 @@ export class DebtsService {
     );
   }
 
-  async updateStatus(id: string, updateDto: UpdateDebtStatusDto) {
-    const debt = await this.prisma.debt.findUnique({ where: { id } });
+  async updateStatus(
+    id: string,
+    userId: string,
+    businessId: string,
+    updateDto: UpdateDebtStatusDto,
+  ) {
+    const debt = await this.prisma.debt.findFirst({
+      where: { id, businessId },
+    });
     if (!debt) throw new NotFoundException('Deuda no encontrada');
 
     if (!validTransitions[debt.status].includes(updateDto.status)) {
@@ -166,7 +178,7 @@ export class DebtsService {
     });
 
     await this.auditService.log({
-      userId: updated.createdByUser.id,
+      userId,
       action: AuditAction.DEBT_STATUS_CHANGED,
       entity: 'Debt',
       entityId: debt.id,
