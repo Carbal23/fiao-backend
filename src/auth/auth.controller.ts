@@ -18,6 +18,8 @@ import {
 } from '@nestjs/swagger';
 import { LogoutDto } from './dto/logout.dto';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
+import { ReqContext } from 'src/common/decorators/request-context.decorator';
+import type { RequestContext } from 'src/auth-log/auth-log.types';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -40,8 +42,11 @@ export class AuthController {
     status: 429,
     description: 'Demasiados intentos de inicio de sesión',
   })
-  async login(@Body() dto: LoginDto): Promise<TokenResponseDto> {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @ReqContext() context: RequestContext,
+  ): Promise<TokenResponseDto> {
+    return this.authService.login(dto, context);
   }
 
   @Post('refresh')
@@ -98,9 +103,10 @@ export class AuthController {
   })
   async logout(
     @Headers('x-refresh-token') refreshToken: string,
+    @ReqContext() context: RequestContext,
     @Body()
     body?: LogoutDto,
   ) {
-    return this.authService.logout(refreshToken, !!body?.allDevices);
+    return this.authService.logout(refreshToken, !!body?.allDevices, context);
   }
 }

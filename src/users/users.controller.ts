@@ -6,6 +6,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { ReqContext } from 'src/common/decorators/request-context.decorator';
+import type { RequestContext } from 'src/auth-log/auth-log.types';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserResponseDto } from './dto/user-response.dto';
 import type { UserSafe } from './user.select';
@@ -78,8 +80,9 @@ export class UsersController {
   changePassword(
     @GetUser('id') userId: string,
     @Body() dto: ChangePasswordDto,
+    @ReqContext() context: RequestContext,
   ) {
-    return this.usersService.changePassword(userId, dto);
+    return this.usersService.changePassword(userId, dto, context);
   }
 
   @UseGuards(JwtAuthGuard)

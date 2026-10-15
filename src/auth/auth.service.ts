@@ -9,11 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
-import { RefreshToken, User } from '@prisma/client';
+import { AuthLogEvent, RefreshToken, User } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
-import { IJwtPayload } from './interfaces/jwt-payload.interface';
+import type { IJwtPayload } from './interfaces/jwt-payload.interface';
 import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
+import { AuthLogService } from 'src/auth-log/auth-log.service';
+import { AuthLogReason, RequestContext } from 'src/auth-log/auth-log.types';
+import type { CredentialsCheck } from './interfaces/credentials-check.interface';
 
 @Injectable()
 export class AuthService {
@@ -21,12 +24,13 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly authLog: AuthLogService,
   ) {}
 
   private async validateCredentials(
     identifier: string,
     password: string,
-  ): Promise<User | null> {
+  ): Promise<CredentialsCheck> {
     const candidates = await this.prisma.user.findMany({
       where: {
         OR: [
@@ -49,13 +53,11 @@ export class AuthService {
       }
     }
 
-    if (matches.length > 1) {
-      throw new UnauthorizedException(
-        'Este dato corresponde a más de una cuenta. Inicia sesión con otro dato (correo, teléfono o documento).',
-      );
-    }
-
-    return matches[0] ?? null;
+    return {
+      user: matches.length === 1 ? matches[0] : null,
+      attemptedUserId: candidates.length === 1 ? candidates[0].id : null,
+      ambiguous: matches.length > 1,
+    };
   }
 
   private get accessTokenExpiresIn(): string {
@@ -106,8 +108,6 @@ export class AuthService {
     const days = this.config.getOrThrow<number>('jwt.refreshTokenExpiresDays');
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    // Se reemplaza la sesión anterior del mismo dispositivo y, de paso, se
-    // limpian las sesiones vencidas del usuario.
     await this.prisma.refreshToken.deleteMany({
       where: {
         userId,
@@ -132,15 +132,47 @@ export class AuthService {
     return { token, refreshToken: `${userId}.${rawToken}` };
   }
 
-  async login(dto: LoginDto): Promise<TokenResponseDto> {
-    const user = await this.validateCredentials(dto.identifier, dto.password);
-    if (!user) throw new UnauthorizedException('Credenciales inválidas');
+  async login(
+    dto: LoginDto,
+    context?: RequestContext,
+  ): Promise<TokenResponseDto> {
+    const { user, attemptedUserId, ambiguous } = await this.validateCredentials(
+      dto.identifier,
+      dto.password,
+    );
+
+    if (!user) {
+      await this.authLog.record({
+        event: AuthLogEvent.LOGIN_FAILED,
+        userId: attemptedUserId,
+        identifier: dto.identifier,
+        reason: ambiguous
+          ? AuthLogReason.AMBIGUOUS_IDENTIFIER
+          : AuthLogReason.INVALID_CREDENTIALS,
+        deviceInfo: dto.deviceInfo,
+        context,
+      });
+
+      if (ambiguous) {
+        throw new UnauthorizedException(
+          'Este dato corresponde a más de una cuenta. Inicia sesión con otro dato (correo, teléfono o documento).',
+        );
+      }
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
 
     const accessToken = await this.signAccessToken(user);
     const { token, refreshToken } = await this.createRefreshToken(
       user.id,
       dto.deviceInfo,
     );
+
+    await this.authLog.record({
+      event: AuthLogEvent.LOGIN_SUCCESS,
+      userId: user.id,
+      deviceInfo: dto.deviceInfo,
+      context,
+    });
 
     return {
       user: serializeUser(user) as UserSafe,
@@ -180,6 +212,7 @@ export class AuthService {
   async logout(
     presentedRefreshToken: string,
     allDevices = false,
+    context?: RequestContext,
   ): Promise<{ message: string }> {
     if (!presentedRefreshToken) {
       throw new BadRequestException('Refresh token no enviado');
@@ -194,6 +227,12 @@ export class AuthService {
       await this.prisma.refreshToken.deleteMany({
         where: { userId: token.userId },
       });
+      await this.authLog.record({
+        event: AuthLogEvent.LOGOUT_ALL_DEVICES,
+        userId: token.userId,
+        deviceInfo: token.deviceInfo,
+        context,
+      });
       return { message: 'Sesiones cerradas en todos los dispositivos' };
     }
 
@@ -204,6 +243,12 @@ export class AuthService {
     }
 
     await this.prisma.refreshToken.delete({ where: { id: token.id } });
+    await this.authLog.record({
+      event: AuthLogEvent.LOGOUT,
+      userId: token.userId,
+      deviceInfo: token.deviceInfo,
+      context,
+    });
     return { message: 'Logout realizado' };
   }
 

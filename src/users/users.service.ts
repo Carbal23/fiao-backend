@@ -5,13 +5,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, Role } from '@prisma/client';
+import { AuthLogEvent, Prisma, Role } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserSafe, userSafeSelect } from './user.select';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthLogService } from 'src/auth-log/auth-log.service';
+import {
+  AuthLogReason,
+  type RequestContext,
+} from 'src/auth-log/auth-log.types';
 
 const ADMIN_ONLY_FIELDS = [
   'email',
@@ -23,7 +28,10 @@ const ADMIN_ONLY_FIELDS = [
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authLog: AuthLogService,
+  ) {}
 
   async create(data: CreateUserDto): Promise<UserSafe> {
     const existingUser = await this.prisma.user.findFirst({
@@ -178,6 +186,7 @@ export class UsersService {
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
+    context?: RequestContext,
   ): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -187,6 +196,12 @@ export class UsersService {
 
     const matches = await bcrypt.compare(dto.currentPassword, user.password);
     if (!matches) {
+      await this.authLog.record({
+        event: AuthLogEvent.PASSWORD_CHANGE_FAILED,
+        userId,
+        reason: AuthLogReason.WRONG_CURRENT_PASSWORD,
+        context,
+      });
       throw new BadRequestException('La contraseña actual no es correcta');
     }
 
@@ -199,6 +214,12 @@ export class UsersService {
       }),
       this.prisma.refreshToken.deleteMany({ where: { userId } }),
     ]);
+
+    await this.authLog.record({
+      event: AuthLogEvent.PASSWORD_CHANGED,
+      userId,
+      context,
+    });
 
     return { message: 'Contraseña actualizada correctamente' };
   }

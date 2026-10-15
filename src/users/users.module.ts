@@ -3,8 +3,9 @@ import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
+import { AuthLogModule } from 'src/auth-log/auth-log.module';
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthLogModule],
   providers: [UsersService, PrismaService],
   controllers: [UsersController],
   exports: [UsersService],

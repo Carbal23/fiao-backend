@@ -27,6 +27,7 @@ model User {
   debtors         Debtor[]       @relation("UserDebtors")
   createdPayments Payment[]      @relation("UserCreatedPayments")
   refreshTokens   RefreshToken[]
+  authLogs        AuthLog[]
 }
 
 model Business {
@@ -181,6 +182,32 @@ model RefreshToken {
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+}
+
+model AuthLog {
+  id         String       @id @default(uuid())
+  userId     String? 
+  event      AuthLogEvent
+  identifier String?
+  reason     String? 
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo String?
+  createdAt  DateTime     @default(now())
+  user       User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+enum AuthLogEvent {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGIN_BLOCKED
+  LOGOUT
+  LOGOUT_ALL_DEVICES
+  PASSWORD_CHANGED
+  PASSWORD_CHANGE_FAILED
 }
 
 enum DocumentType {
