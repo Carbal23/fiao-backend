@@ -65,11 +65,7 @@ export class UsersService {
         );
       }
     }
-    const hashedPassword: string = await (
-      bcrypt as unknown as {
-        hash: (s: string, rounds: number) => Promise<string>;
-      }
-    ).hash(data.password, 10);
+    const hashedPassword: string = await bcrypt.hash(data.password, 10);
 
     try {
       const user = await this.prisma.user.create({
@@ -189,20 +185,12 @@ export class UsersService {
     });
     if (!user?.password) throw new NotFoundException('User not found');
 
-    const matches = await (
-      bcrypt as unknown as {
-        compare: (data: string, hash: string) => Promise<boolean>;
-      }
-    ).compare(dto.currentPassword, user.password);
+    const matches = await bcrypt.compare(dto.currentPassword, user.password);
     if (!matches) {
       throw new BadRequestException('La contraseña actual no es correcta');
     }
 
-    const hashedPassword = await (
-      bcrypt as unknown as {
-        hash: (s: string, rounds: number) => Promise<string>;
-      }
-    ).hash(dto.newPassword, 10);
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
 
     await this.prisma.$transaction([
       this.prisma.user.update({

@@ -6,6 +6,8 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { LoginThrottlerGuard } from './guards/login-throttler.guard';
 
 @Global()
 @Module({
@@ -19,10 +21,15 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         signOptions: { expiresIn: config.get<string>('jwt.expiresIn') },
       }),
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 5 }],
+      errorMessage:
+        'Demasiados intentos de inicio de sesión. Intenta de nuevo en un minuto.',
+    }),
     UsersModule,
     PrismaModule,
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, LoginThrottlerGuard],
   controllers: [AuthController],
   exports: [AuthService],
 })

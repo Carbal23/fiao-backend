@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   BadRequestException,
   Injectable,
@@ -10,8 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
-import { User } from '@prisma/client';
-import { randomBytes } from 'crypto';
+import { RefreshToken, User } from '@prisma/client';
+import { createHash, randomBytes } from 'crypto';
 import { IJwtPayload } from './interfaces/jwt-payload.interface';
 import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
@@ -28,7 +27,7 @@ export class AuthService {
     identifier: string,
     password: string,
   ): Promise<User | null> {
-    const user = await this.prisma.user.findFirst({
+    const candidates = await this.prisma.user.findMany({
       where: {
         OR: [
           { email: identifier },
@@ -37,71 +36,100 @@ export class AuthService {
         ],
         inactivatedAt: null,
       },
+      take: 2,
     });
 
-    if (!user || !user.password) return null;
-
-    let isMatch = false;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const compareFn = bcrypt.compare as unknown as (
-        a: string,
-        b: string,
-      ) => Promise<boolean>;
-      isMatch = await compareFn(password, user.password);
-    } catch {
-      isMatch = false;
+    const matches: User[] = [];
+    for (const candidate of candidates) {
+      if (
+        candidate.password &&
+        (await bcrypt.compare(password, candidate.password))
+      ) {
+        matches.push(candidate);
+      }
     }
 
-    if (!isMatch) return null;
+    if (matches.length > 1) {
+      throw new UnauthorizedException(
+        'Este dato corresponde a más de una cuenta. Inicia sesión con otro dato (correo, teléfono o documento).',
+      );
+    }
 
-    return user;
+    return matches[0] ?? null;
   }
 
-  private async signAccessToken(user: User) {
-    const payload: IJwtPayload = {
-      sub: user.id,
-      documentNumber: user.documentNumber,
-      role: user.role,
-    };
-    const token = await this.jwtService.signAsync(payload, {
-      expiresIn: this.config.get<string>('jwt.expiresIn'),
+  private get accessTokenExpiresIn(): string {
+    return this.config.getOrThrow<string>('jwt.expiresIn');
+  }
+
+  private signAccessToken(user: User) {
+    const payload: IJwtPayload = { sub: user.id, role: user.role };
+    return this.jwtService.signAsync(payload);
+  }
+
+  private hashToken(rawToken: string) {
+    return createHash('sha256').update(rawToken).digest('hex');
+  }
+
+  private parseRefreshToken(presentedRefreshToken: string) {
+    const separator = presentedRefreshToken.indexOf('.');
+    const userId = presentedRefreshToken.slice(0, separator);
+    const rawToken = presentedRefreshToken.slice(separator + 1);
+
+    if (separator <= 0 || !rawToken) {
+      throw new UnauthorizedException('Token inválido');
+    }
+
+    return { userId, rawToken };
+  }
+
+  private async findValidRefreshToken(
+    presentedRefreshToken: string,
+    deviceInfo?: string,
+  ): Promise<RefreshToken | null> {
+    const { userId, rawToken } = this.parseRefreshToken(presentedRefreshToken);
+
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: this.hashToken(rawToken) },
     });
+
+    if (!token || token.userId !== userId) return null;
+    if (token.expiresAt <= new Date()) return null;
+    if (deviceInfo !== undefined && token.deviceInfo !== deviceInfo) {
+      return null;
+    }
+
     return token;
   }
 
   private async createRefreshToken(userId: string, deviceInfo?: string) {
-    const days = parseInt(
-      this.config.get<string>('jwt.refreshTokenExpiresDays') || '30',
-      10,
-    );
+    const days = this.config.getOrThrow<number>('jwt.refreshTokenExpiresDays');
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
+    // Se reemplaza la sesión anterior del mismo dispositivo y, de paso, se
+    // limpian las sesiones vencidas del usuario.
     await this.prisma.refreshToken.deleteMany({
       where: {
         userId,
-        deviceInfo: deviceInfo ?? null,
+        OR: [
+          { deviceInfo: deviceInfo ?? null },
+          { expiresAt: { lte: new Date() } },
+        ],
       },
     });
 
     const rawToken = randomBytes(64).toString('hex');
-    const refreshToken = `${userId}.${rawToken}`;
-    const rounds = parseInt(
-      this.config.get<string>('jwt.refreshTokenHashRounds') || '10',
-      10,
-    );
-    const hash = await (
-      bcrypt.hash as unknown as (
-        data: string,
-        rounds: number | string,
-      ) => Promise<string>
-    )(rawToken, rounds);
 
     const token = await this.prisma.refreshToken.create({
-      data: { userId, tokenHash: hash, expiresAt, deviceInfo },
+      data: {
+        userId,
+        tokenHash: this.hashToken(rawToken),
+        expiresAt,
+        deviceInfo,
+      },
     });
 
-    return { token, refreshToken, reused: false };
+    return { token, refreshToken: `${userId}.${rawToken}` };
   }
 
   async login(dto: LoginDto): Promise<TokenResponseDto> {
@@ -114,12 +142,10 @@ export class AuthService {
       dto.deviceInfo,
     );
 
-    const safeUser = serializeUser(user);
-
     return {
-      user: safeUser as UserSafe,
+      user: serializeUser(user) as UserSafe,
       accessToken,
-      accessTokenExpiresIn: this.config.get<string>('jwt.expiresIn') || '15m',
+      accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshToken,
       refreshTokenExpiresAt: token.expiresAt.toISOString(),
     };
@@ -129,52 +155,26 @@ export class AuthService {
     presentedRefreshToken: string,
     deviceInfo?: string,
   ): Promise<TokenResponseDto> {
-    const [userId, rawToken] = presentedRefreshToken.split('.');
-
-    if (!userId || !rawToken) {
-      throw new UnauthorizedException('Token inválido');
-    }
-
-    const dbTokens = await this.prisma.refreshToken.findMany({
-      where: {
-        userId,
-        deviceInfo: deviceInfo ?? undefined,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!dbTokens.length) {
+    const token = await this.findValidRefreshToken(
+      presentedRefreshToken,
+      deviceInfo,
+    );
+    if (!token) {
       throw new UnauthorizedException('Refresh token inválido o expirado');
     }
 
-    for (const dbToken of dbTokens) {
-      const compareFn = bcrypt.compare as unknown as (
-        a: string,
-        b: string,
-      ) => Promise<boolean>;
-      const isMatch = await compareFn(rawToken, dbToken.tokenHash);
-      if (isMatch) {
-        const user = await this.prisma.user.findFirst({
-          where: { id: userId, inactivatedAt: null },
-        });
-        if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    const user = await this.prisma.user.findFirst({
+      where: { id: token.userId, inactivatedAt: null },
+    });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
-        const newAccessToken = await this.signAccessToken(user);
-        const safeUser = serializeUser(user);
-
-        return {
-          user: safeUser as UserSafe,
-          accessToken: newAccessToken,
-          accessTokenExpiresIn:
-            this.config.get<string>('jwt.expiresIn') || '15m',
-          refreshToken: presentedRefreshToken,
-          refreshTokenExpiresAt: dbToken.expiresAt.toISOString(),
-        };
-      }
-    }
-
-    throw new UnauthorizedException('Refresh token inválido o expirado');
+    return {
+      user: serializeUser(user) as UserSafe,
+      accessToken: await this.signAccessToken(user),
+      accessTokenExpiresIn: this.accessTokenExpiresIn,
+      refreshToken: presentedRefreshToken,
+      refreshTokenExpiresAt: token.expiresAt.toISOString(),
+    };
   }
 
   async logout(
@@ -185,33 +185,26 @@ export class AuthService {
       throw new BadRequestException('Refresh token no enviado');
     }
 
-    const [userId, rawToken] = presentedRefreshToken.split('.');
+    const token = await this.findValidRefreshToken(presentedRefreshToken);
 
-    if (!userId || !rawToken) {
-      throw new UnauthorizedException('Token inválido');
-    }
     if (allDevices) {
-      await this.prisma.refreshToken.deleteMany({ where: { userId } });
+      if (!token) {
+        throw new UnauthorizedException('Refresh token inválido o expirado');
+      }
+      await this.prisma.refreshToken.deleteMany({
+        where: { userId: token.userId },
+      });
       return { message: 'Sesiones cerradas en todos los dispositivos' };
     }
 
-    if (presentedRefreshToken) {
-      const tokens = await this.prisma.refreshToken.findMany({
-        where: { userId },
-      });
-      for (const dbToken of tokens) {
-        const compareFn = bcrypt.compare as unknown as (
-          a: string,
-          b: string,
-        ) => Promise<boolean>;
-        const isMatch = await compareFn(rawToken, dbToken.tokenHash);
-        if (isMatch) {
-          await this.prisma.refreshToken.delete({ where: { id: dbToken.id } });
-          return { message: 'Logout realizado' };
-        }
-      }
+    if (!token) {
+      return {
+        message: 'Logout realizado (token no encontrado o ya eliminado)',
+      };
     }
-    return { message: 'Logout realizado (token no encontrado o ya eliminado)' };
+
+    await this.prisma.refreshToken.delete({ where: { id: token.id } });
+    return { message: 'Logout realizado' };
   }
 
   async getUserSafeById(id: string): Promise<UserSafe | null> {

@@ -4,6 +4,7 @@ import {
   Body,
   Headers,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { LogoutDto } from './dto/logout.dto';
+import { LoginThrottlerGuard } from './guards/login-throttler.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -23,6 +25,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @UseGuards(LoginThrottlerGuard)
   @ApiOperation({ summary: 'Autenticación de usuario' })
   @ApiResponse({
     status: 201,
@@ -32,6 +35,10 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description: 'Credenciales inválidas',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Demasiados intentos de inicio de sesión',
   })
   async login(@Body() dto: LoginDto): Promise<TokenResponseDto> {
     return this.authService.login(dto);

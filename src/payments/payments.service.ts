@@ -73,7 +73,6 @@ export class PaymentsService {
         );
       }
 
-     
       const created = await tx.payment.create({
         data: {
           debtId,
