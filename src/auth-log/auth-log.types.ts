@@ -11,7 +11,8 @@ export interface AuthLogParams {
   userId?: string | null;
   identifier?: string;
   reason?: string;
-  deviceInfo?: string | null;
+  deviceId?: string | null;
+  deviceName?: string | null;
   context?: RequestContext;
 }
 

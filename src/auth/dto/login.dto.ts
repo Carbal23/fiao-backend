@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
@@ -18,11 +24,21 @@ export class LoginDto {
   password!: string;
 
   @ApiProperty({
-    example: 'androiod 11',
+    example: '3f2b8c1e-6d4a-4f7e-9b1a-2c5d8e9f0a1b',
+    description:
+      'Identificador aleatorio de la instalación (UUID). La app lo genera al abrirse por primera vez y el navegador en la primera visita, y lo guardan para enviarlo siempre igual.',
+  })
+  @IsString()
+  @Length(8, 128)
+  deviceId!: string;
+
+  @ApiProperty({
+    example: 'Samsung Galaxy A54 · Android 14',
     required: false,
-    description: 'Identificador del dispositivo',
+    description: 'Nombre legible del dispositivo, para mostrar las sesiones',
   })
   @IsOptional()
   @IsString()
-  deviceInfo?: string;
+  @MaxLength(100)
+  deviceName?: string;
 }

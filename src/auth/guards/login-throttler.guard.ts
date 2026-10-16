@@ -13,7 +13,9 @@ import { AuthLogEvent } from '@prisma/client';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { requestContextFrom } from 'src/common/decorators/request-context.decorator';
 
-type LoginBody = { identifier?: unknown; deviceInfo?: unknown } | undefined;
+type LoginBody =
+  | { identifier?: unknown; deviceId?: unknown; deviceName?: unknown }
+  | undefined;
 
 @Injectable()
 export class LoginThrottlerGuard extends ThrottlerGuard {
@@ -58,8 +60,10 @@ export class LoginThrottlerGuard extends ThrottlerGuard {
         event: AuthLogEvent.LOGIN_BLOCKED,
         identifier:
           typeof body?.identifier === 'string' ? body.identifier : undefined,
-        deviceInfo:
-          typeof body?.deviceInfo === 'string' ? body.deviceInfo : undefined,
+        deviceId:
+          typeof body?.deviceId === 'string' ? body.deviceId : undefined,
+        deviceName:
+          typeof body?.deviceName === 'string' ? body.deviceName : undefined,
         context: requestContextFrom(request),
       });
     }

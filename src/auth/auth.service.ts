@@ -17,6 +17,7 @@ import { serializeUser } from 'src/users/helpers/user.serializer';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { AuthLogReason, RequestContext } from 'src/auth-log/auth-log.types';
 import type { CredentialsCheck } from './interfaces/credentials-check.interface';
+import type { Device } from './interfaces/device.interface';
 
 /**
  * Margen para reutilizar un refresh token recién rotado sin tratarlo como
@@ -113,7 +114,7 @@ export class AuthService {
     db: Prisma.TransactionClient,
     userId: string,
     familyId: string,
-    deviceInfo?: string | null,
+    device: Device,
   ) {
     const days = this.config.getOrThrow<number>('jwt.refreshTokenExpiresDays');
     const rawToken = randomBytes(64).toString('hex');
@@ -124,30 +125,23 @@ export class AuthService {
         familyId,
         tokenHash: this.hashToken(rawToken),
         expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
-        deviceInfo,
+        deviceId: device.deviceId,
+        deviceName: device.deviceName,
       },
     });
 
     return { token, refreshToken: `${userId}.${rawToken}` };
   }
 
-  private async createRefreshToken(userId: string, deviceInfo?: string) {
+  private async createRefreshToken(userId: string, device: Device) {
     await this.prisma.refreshToken.deleteMany({
       where: {
         userId,
-        OR: [
-          { deviceInfo: deviceInfo ?? null },
-          { expiresAt: { lte: new Date() } },
-        ],
+        OR: [{ deviceId: device.deviceId }, { expiresAt: { lte: new Date() } }],
       },
     });
 
-    return this.issueRefreshToken(
-      this.prisma,
-      userId,
-      randomUUID(),
-      deviceInfo,
-    );
+    return this.issueRefreshToken(this.prisma, userId, randomUUID(), device);
   }
 
   private async handleRefreshTokenReuse(
@@ -166,7 +160,8 @@ export class AuthService {
     await this.authLog.record({
       event: AuthLogEvent.REFRESH_TOKEN_REUSED,
       userId: token.userId,
-      deviceInfo: token.deviceInfo,
+      deviceId: token.deviceId,
+      deviceName: token.deviceName,
       context,
     });
 
@@ -192,7 +187,8 @@ export class AuthService {
         reason: ambiguous
           ? AuthLogReason.AMBIGUOUS_IDENTIFIER
           : AuthLogReason.INVALID_CREDENTIALS,
-        deviceInfo: dto.deviceInfo,
+        deviceId: dto.deviceId,
+        deviceName: dto.deviceName,
         context,
       });
 
@@ -205,15 +201,16 @@ export class AuthService {
     }
 
     const accessToken = await this.signAccessToken(user);
-    const { token, refreshToken } = await this.createRefreshToken(
-      user.id,
-      dto.deviceInfo,
-    );
+    const { token, refreshToken } = await this.createRefreshToken(user.id, {
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName,
+    });
 
     await this.authLog.record({
       event: AuthLogEvent.LOGIN_SUCCESS,
       userId: user.id,
-      deviceInfo: dto.deviceInfo,
+      deviceId: dto.deviceId,
+      deviceName: dto.deviceName,
       context,
     });
 
@@ -228,7 +225,7 @@ export class AuthService {
 
   async refreshTokens(
     presentedRefreshToken: string,
-    deviceInfo?: string,
+    deviceId?: string,
     context?: RequestContext,
   ): Promise<TokenResponseDto> {
     const token = await this.findRefreshToken(presentedRefreshToken);
@@ -236,7 +233,7 @@ export class AuthService {
     if (
       !token ||
       token.expiresAt <= new Date() ||
-      (deviceInfo !== undefined && token.deviceInfo !== deviceInfo)
+      (deviceId !== undefined && token.deviceId !== deviceId)
     ) {
       throw new UnauthorizedException('Refresh token inválido o expirado');
     }
@@ -259,12 +256,18 @@ export class AuthService {
         throw new UnauthorizedException('Refresh token ya utilizado');
       }
 
-      return this.issueRefreshToken(
-        tx,
-        token.userId,
-        token.familyId,
-        token.deviceInfo,
-      );
+      await tx.refreshToken.deleteMany({
+        where: {
+          familyId: token.familyId,
+          rotatedAt: { not: null },
+          id: { not: token.id },
+        },
+      });
+
+      return this.issueRefreshToken(tx, token.userId, token.familyId, {
+        deviceId: token.deviceId,
+        deviceName: token.deviceName,
+      });
     });
 
     return {
@@ -298,7 +301,8 @@ export class AuthService {
       await this.authLog.record({
         event: AuthLogEvent.LOGOUT_ALL_DEVICES,
         userId: token.userId,
-        deviceInfo: token.deviceInfo,
+        deviceId: token.deviceId,
+        deviceName: token.deviceName,
         context,
       });
       return { message: 'Sesiones cerradas en todos los dispositivos' };
@@ -316,7 +320,8 @@ export class AuthService {
     await this.authLog.record({
       event: AuthLogEvent.LOGOUT,
       userId: token.userId,
-      deviceInfo: token.deviceInfo,
+      deviceId: token.deviceId,
+      deviceName: token.deviceName,
       context,
     });
     return { message: 'Logout realizado' };

@@ -180,11 +180,14 @@ model RefreshToken {
   expiresAt  DateTime
   rotatedAt  DateTime? 
   createdAt  DateTime  @default(now())
-  deviceInfo String? // opcional: "android-phone", "ios", "web", etc.
+  deviceId   String? 
+  deviceName String? 
+  deviceInfo String? 
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([familyId])
+  @@index([userId, deviceId])
 }
 
 model AuthLog {
@@ -195,7 +198,9 @@ model AuthLog {
   reason     String? 
   ipAddress  String?
   userAgent  String?
-  deviceInfo String?
+  deviceId   String?
+  deviceName String?
+  deviceInfo String? 
   createdAt  DateTime     @default(now())
   user       User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 

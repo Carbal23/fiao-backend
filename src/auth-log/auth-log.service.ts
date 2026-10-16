@@ -9,7 +9,8 @@ export class AuthLogService {
   constructor(private readonly prisma: PrismaService) {}
 
   async record(params: AuthLogParams): Promise<void> {
-    const { event, userId, identifier, reason, deviceInfo, context } = params;
+    const { event, userId, identifier, reason, deviceId, deviceName, context } =
+      params;
 
     try {
       await this.prisma.authLog.create({
@@ -18,7 +19,8 @@ export class AuthLogService {
           userId: userId ?? null,
           identifier,
           reason,
-          deviceInfo: deviceInfo ?? null,
+          deviceId: deviceId ?? null,
+          deviceName: deviceName ?? null,
           ipAddress: context?.ipAddress,
           userAgent: context?.userAgent,
         },

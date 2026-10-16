@@ -61,7 +61,7 @@ export class AuthController {
     required: true,
   })
   @ApiHeader({
-    name: 'x-device-info',
+    name: 'x-device-id',
     description: 'Identificador del dispositivo',
     required: false,
   })
@@ -76,12 +76,12 @@ export class AuthController {
   })
   async refresh(
     @Headers('x-refresh-token') refreshToken: string,
-    @Headers('x-device-info') deviceInfo: string,
+    @Headers('x-device-id') deviceId: string,
     @ReqContext() context: RequestContext,
   ) {
     if (!refreshToken)
       throw new BadRequestException('Refresh token no enviado');
-    return this.authService.refreshTokens(refreshToken, deviceInfo, context);
+    return this.authService.refreshTokens(refreshToken, deviceId, context);
   }
 
   @Post('logout')
