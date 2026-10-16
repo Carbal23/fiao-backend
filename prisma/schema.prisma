@@ -175,13 +175,16 @@ model AuditLog {
 model RefreshToken {
   id         String   @id @default(uuid())
   userId     String
-  tokenHash  String   @unique // SHA-256 del token aleatorio
+  familyId   String 
+  tokenHash  String    @unique
   expiresAt  DateTime
-  createdAt  DateTime @default(now())
+  rotatedAt  DateTime? 
+  createdAt  DateTime  @default(now())
   deviceInfo String? // opcional: "android-phone", "ios", "web", etc.
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([familyId])
 }
 
 model AuthLog {
@@ -208,6 +211,7 @@ enum AuthLogEvent {
   LOGOUT_ALL_DEVICES
   PASSWORD_CHANGED
   PASSWORD_CHANGE_FAILED
+  REFRESH_TOKEN_REUSED
 }
 
 enum DocumentType {

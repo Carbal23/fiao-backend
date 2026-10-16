@@ -9,14 +9,22 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
-import { AuthLogEvent, RefreshToken, User } from '@prisma/client';
-import { createHash, randomBytes } from 'crypto';
+import { AuthLogEvent, Prisma, RefreshToken, User } from '@prisma/client';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import type { IJwtPayload } from './interfaces/jwt-payload.interface';
 import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { AuthLogReason, RequestContext } from 'src/auth-log/auth-log.types';
 import type { CredentialsCheck } from './interfaces/credentials-check.interface';
+
+/**
+ * Margen para reutilizar un refresh token recién rotado sin tratarlo como
+ * robo. Si el frontend lanza dos refresh a la vez con el mismo token, el
+ * segundo llega unos milisegundos después del primero: se rechaza, pero sin
+ * cerrar la sesión. Pasado este margen, la reutilización cierra la sesión.
+ */
+const REFRESH_REUSE_GRACE_MS = 30_000;
 
 @Injectable()
 export class AuthService {
@@ -85,9 +93,8 @@ export class AuthService {
     return { userId, rawToken };
   }
 
-  private async findValidRefreshToken(
+  private async findRefreshToken(
     presentedRefreshToken: string,
-    deviceInfo?: string,
   ): Promise<RefreshToken | null> {
     const { userId, rawToken } = this.parseRefreshToken(presentedRefreshToken);
 
@@ -95,19 +102,36 @@ export class AuthService {
       where: { tokenHash: this.hashToken(rawToken) },
     });
 
-    if (!token || token.userId !== userId) return null;
-    if (token.expiresAt <= new Date()) return null;
-    if (deviceInfo !== undefined && token.deviceInfo !== deviceInfo) {
-      return null;
-    }
+    return token && token.userId === userId ? token : null;
+  }
 
-    return token;
+  private isActive(token: RefreshToken) {
+    return !token.rotatedAt && token.expiresAt > new Date();
+  }
+
+  private async issueRefreshToken(
+    db: Prisma.TransactionClient,
+    userId: string,
+    familyId: string,
+    deviceInfo?: string | null,
+  ) {
+    const days = this.config.getOrThrow<number>('jwt.refreshTokenExpiresDays');
+    const rawToken = randomBytes(64).toString('hex');
+
+    const token = await db.refreshToken.create({
+      data: {
+        userId,
+        familyId,
+        tokenHash: this.hashToken(rawToken),
+        expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+        deviceInfo,
+      },
+    });
+
+    return { token, refreshToken: `${userId}.${rawToken}` };
   }
 
   private async createRefreshToken(userId: string, deviceInfo?: string) {
-    const days = this.config.getOrThrow<number>('jwt.refreshTokenExpiresDays');
-    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-
     await this.prisma.refreshToken.deleteMany({
       where: {
         userId,
@@ -118,18 +142,37 @@ export class AuthService {
       },
     });
 
-    const rawToken = randomBytes(64).toString('hex');
+    return this.issueRefreshToken(
+      this.prisma,
+      userId,
+      randomUUID(),
+      deviceInfo,
+    );
+  }
 
-    const token = await this.prisma.refreshToken.create({
-      data: {
-        userId,
-        tokenHash: this.hashToken(rawToken),
-        expiresAt,
-        deviceInfo,
-      },
+  private async handleRefreshTokenReuse(
+    token: RefreshToken,
+    context?: RequestContext,
+  ): Promise<never> {
+    const rotatedAgo = Date.now() - (token.rotatedAt?.getTime() ?? 0);
+
+    if (rotatedAgo <= REFRESH_REUSE_GRACE_MS) {
+      throw new UnauthorizedException('Refresh token ya utilizado');
+    }
+
+    await this.prisma.refreshToken.deleteMany({
+      where: { familyId: token.familyId },
+    });
+    await this.authLog.record({
+      event: AuthLogEvent.REFRESH_TOKEN_REUSED,
+      userId: token.userId,
+      deviceInfo: token.deviceInfo,
+      context,
     });
 
-    return { token, refreshToken: `${userId}.${rawToken}` };
+    throw new UnauthorizedException(
+      'La sesión se cerró por seguridad. Inicia sesión de nuevo.',
+    );
   }
 
   async login(
@@ -186,13 +229,20 @@ export class AuthService {
   async refreshTokens(
     presentedRefreshToken: string,
     deviceInfo?: string,
+    context?: RequestContext,
   ): Promise<TokenResponseDto> {
-    const token = await this.findValidRefreshToken(
-      presentedRefreshToken,
-      deviceInfo,
-    );
-    if (!token) {
+    const token = await this.findRefreshToken(presentedRefreshToken);
+
+    if (
+      !token ||
+      token.expiresAt <= new Date() ||
+      (deviceInfo !== undefined && token.deviceInfo !== deviceInfo)
+    ) {
       throw new UnauthorizedException('Refresh token inválido o expirado');
+    }
+
+    if (token.rotatedAt) {
+      return this.handleRefreshTokenReuse(token, context);
     }
 
     const user = await this.prisma.user.findFirst({
@@ -200,12 +250,29 @@ export class AuthService {
     });
     if (!user) throw new UnauthorizedException('Usuario no encontrado');
 
+    const next = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.refreshToken.updateMany({
+        where: { id: token.id, rotatedAt: null },
+        data: { rotatedAt: new Date() },
+      });
+      if (count === 0) {
+        throw new UnauthorizedException('Refresh token ya utilizado');
+      }
+
+      return this.issueRefreshToken(
+        tx,
+        token.userId,
+        token.familyId,
+        token.deviceInfo,
+      );
+    });
+
     return {
       user: serializeUser(user) as UserSafe,
       accessToken: await this.signAccessToken(user),
       accessTokenExpiresIn: this.accessTokenExpiresIn,
-      refreshToken: presentedRefreshToken,
-      refreshTokenExpiresAt: token.expiresAt.toISOString(),
+      refreshToken: next.refreshToken,
+      refreshTokenExpiresAt: next.token.expiresAt.toISOString(),
     };
   }
 
@@ -218,7 +285,8 @@ export class AuthService {
       throw new BadRequestException('Refresh token no enviado');
     }
 
-    const token = await this.findValidRefreshToken(presentedRefreshToken);
+    const found = await this.findRefreshToken(presentedRefreshToken);
+    const token = found && this.isActive(found) ? found : null;
 
     if (allDevices) {
       if (!token) {
@@ -242,7 +310,9 @@ export class AuthService {
       };
     }
 
-    await this.prisma.refreshToken.delete({ where: { id: token.id } });
+    await this.prisma.refreshToken.deleteMany({
+      where: { familyId: token.familyId },
+    });
     await this.authLog.record({
       event: AuthLogEvent.LOGOUT,
       userId: token.userId,

@@ -50,7 +50,11 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @ApiOperation({ summary: 'Renovar access token usando refresh token' })
+  @ApiOperation({
+    summary: 'Renovar access token usando refresh token',
+    description:
+      'Devuelve un access token y un refresh token nuevos. El refresh token enviado deja de servir: el cliente debe guardar el nuevo. Reutilizar un refresh token ya usado cierra la sesión.',
+  })
   @ApiHeader({
     name: 'x-refresh-token',
     description: 'Refresh token',
@@ -73,10 +77,11 @@ export class AuthController {
   async refresh(
     @Headers('x-refresh-token') refreshToken: string,
     @Headers('x-device-info') deviceInfo: string,
+    @ReqContext() context: RequestContext,
   ) {
     if (!refreshToken)
       throw new BadRequestException('Refresh token no enviado');
-    return this.authService.refreshTokens(refreshToken, deviceInfo);
+    return this.authService.refreshTokens(refreshToken, deviceInfo, context);
   }
 
   @Post('logout')
