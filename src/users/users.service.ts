@@ -13,6 +13,7 @@ import { UserSafe, userSafeSelect } from './user.select';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
+import { LegalService } from 'src/legal/legal.service';
 import {
   AuthLogReason,
   type RequestContext,
@@ -31,9 +32,16 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authLog: AuthLogService,
+    private readonly legalService: LegalService,
   ) {}
 
-  async create(data: CreateUserDto): Promise<UserSafe> {
+  async create(
+    data: CreateUserDto,
+    context?: RequestContext,
+  ): Promise<UserSafe> {
+    const { acceptedLegalDocumentIds, ...userData } = data;
+    await this.legalService.assertAcceptsAllCurrent(acceptedLegalDocumentIds);
+
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -76,13 +84,24 @@ export class UsersService {
     const hashedPassword: string = await bcrypt.hash(data.password, 10);
 
     try {
-      const user = await this.prisma.user.create({
-        data: {
-          ...data,
-          role: Role.USER,
-          password: hashedPassword,
-        },
-        select: userSafeSelect,
+      // El usuario y la prueba de su aceptación se crean juntos: no puede
+      // existir una cuenta sin el registro de que aceptó los documentos.
+      const user = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            ...userData,
+            role: Role.USER,
+            password: hashedPassword,
+          },
+          select: userSafeSelect,
+        });
+        await this.legalService.recordConsents(
+          tx,
+          created.id,
+          acceptedLegalDocumentIds,
+          context,
+        );
+        return created;
       });
 
       const debtorMatches = await this.prisma.debtor.findMany({

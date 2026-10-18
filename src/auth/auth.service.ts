@@ -15,6 +15,7 @@ import type { IJwtPayload } from './interfaces/jwt-payload.interface';
 import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
+import { LegalService } from 'src/legal/legal.service';
 import { AuthLogReason, RequestContext } from 'src/auth-log/auth-log.types';
 import type { CredentialsCheck } from './interfaces/credentials-check.interface';
 import type { Device } from './interfaces/device.interface';
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly authLog: AuthLogService,
+    private readonly legalService: LegalService,
   ) {}
 
   private async validateCredentials(
@@ -220,6 +222,7 @@ export class AuthService {
       accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshToken,
       refreshTokenExpiresAt: token.expiresAt.toISOString(),
+      pendingLegalDocuments: await this.pendingLegalDocuments(user.id),
     };
   }
 
@@ -276,6 +279,7 @@ export class AuthService {
       accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshToken: next.refreshToken,
       refreshTokenExpiresAt: next.token.expiresAt.toISOString(),
+      pendingLegalDocuments: await this.pendingLegalDocuments(user.id),
     };
   }
 
@@ -325,6 +329,11 @@ export class AuthService {
       context,
     });
     return { message: 'Logout realizado' };
+  }
+
+  private async pendingLegalDocuments(userId: string) {
+    const pending = await this.legalService.getPendingDocuments(userId);
+    return pending.map(({ id, type, version }) => ({ id, type, version }));
   }
 
   async getUserSafeById(id: string): Promise<UserSafe | null> {

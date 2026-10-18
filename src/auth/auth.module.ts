@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
 import { AuthLogModule } from 'src/auth-log/auth-log.module';
+import { LegalModule } from 'src/legal/legal.module';
 
 @Global()
 @Module({
@@ -30,6 +31,7 @@ import { AuthLogModule } from 'src/auth-log/auth-log.module';
     UsersModule,
     PrismaModule,
     AuthLogModule,
+    LegalModule,
   ],
   providers: [AuthService, JwtStrategy, LoginThrottlerGuard],
   controllers: [AuthController],

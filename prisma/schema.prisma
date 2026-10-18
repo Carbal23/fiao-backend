@@ -28,6 +28,7 @@ model User {
   createdPayments Payment[]      @relation("UserCreatedPayments")
   refreshTokens   RefreshToken[]
   authLogs        AuthLog[]
+  consents        UserConsent[]
 }
 
 model Business {
@@ -217,6 +218,40 @@ enum AuthLogEvent {
   PASSWORD_CHANGED
   PASSWORD_CHANGE_FAILED
   REFRESH_TOKEN_REUSED
+}
+
+model LegalDocument {
+  id          String            @id @default(uuid())
+  type        LegalDocumentType
+  version     String
+  content     String 
+  contentHash String // SHA-256 del texto: prueba de qué se aceptó exactamente
+  url         String? // página pública donde también está publicado
+  publishedAt DateTime
+  createdAt   DateTime          @default(now())
+  consents    UserConsent[]
+
+  @@unique([type, version])
+  @@index([type, publishedAt])
+}
+
+model UserConsent {
+  id         String        @id @default(uuid())
+  userId     String
+  documentId String
+  acceptedAt DateTime      @default(now())
+  ipAddress  String?
+  userAgent  String?
+  user       User          @relation(fields: [userId], references: [id])
+  document   LegalDocument @relation(fields: [documentId], references: [id])
+
+  @@unique([userId, documentId])
+  @@index([userId])
+}
+
+enum LegalDocumentType {
+  TERMS_AND_CONDITIONS
+  PRIVACY_POLICY
 }
 
 enum DocumentType {

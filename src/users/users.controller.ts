@@ -30,8 +30,8 @@ export class UsersController {
     status: 400,
     description: 'Datos inválidos o usuario ya existente',
   })
-  create(@Body() data: CreateUserDto) {
-    return this.usersService.create(data);
+  create(@Body() data: CreateUserDto, @ReqContext() context: RequestContext) {
+    return this.usersService.create(data, context);
   }
 
   @UseGuards(JwtAuthGuard)

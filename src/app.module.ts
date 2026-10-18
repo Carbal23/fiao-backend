@@ -12,6 +12,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
+import { LegalModule } from './legal/legal.module';
 
 @Global()
 @Module({
@@ -32,6 +33,7 @@ import { HealthModule } from './health/health.module';
     InvitationsModule,
     AuditModule,
     HealthModule,
+    LegalModule,
   ],
   controllers: [],
   providers: [],

@@ -4,8 +4,9 @@ import { UsersController } from './users.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthLogModule } from 'src/auth-log/auth-log.module';
+import { LegalModule } from 'src/legal/legal.module';
 @Module({
-  imports: [PrismaModule, AuthLogModule],
+  imports: [PrismaModule, AuthLogModule, LegalModule],
   providers: [UsersService, PrismaService],
   controllers: [UsersController],
   exports: [UsersService],
