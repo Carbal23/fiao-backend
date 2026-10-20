@@ -21,11 +21,7 @@ model User {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   inactivatedAt   DateTime?
-  // Quién desactivó la cuenta: el propio usuario puede reactivarla al iniciar
-  // sesión; si fue un administrador, solo otro administrador.
-  inactivatedBy       InactivationSource?
-  // Solicitud de eliminación: la cuenta se anonimiza en deletionScheduledAt,
-  // salvo que el usuario la cancele antes.
+  inactivatedBy   InactivationSource?
   deletionRequestedAt DateTime?
   deletionScheduledAt DateTime?
   // Datos personales eliminados. Es definitivo: la cuenta no se recupera.
@@ -313,9 +309,7 @@ enum DocumentType {
 
 enum Role {
   USER // por defecto, cualquier usuario registrado
-  ADMIN // administrador de la plataforma (ej. soporte, superadmin)
-  MODERATOR // opcional, revisión de contenidos o incidencias
-  SUSPENDED // cuenta bloqueada
+  ADMIN // administrador de la plataforma (soporte, backoffice)
 }
 
 enum BusinessUserRole {

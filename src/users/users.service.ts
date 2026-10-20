@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +13,8 @@ import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserSafe, userSafeSelect } from './user.select';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
+import { UserLookupResponseDto } from './dto/user-lookup.dto';
+import { userIdentifierConditions } from 'src/common/validation/user-identifier';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { LegalService } from 'src/legal/legal.service';
@@ -29,6 +33,8 @@ const ADMIN_ONLY_FIELDS = [
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authLog: AuthLogService,
@@ -84,8 +90,6 @@ export class UsersService {
     const hashedPassword: string = await bcrypt.hash(data.password, 10);
 
     try {
-      // El usuario y la prueba de su aceptación se crean juntos: no puede
-      // existir una cuenta sin el registro de que aceptó los documentos.
       const user = await this.prisma.$transaction(async (tx) => {
         const created = await tx.user.create({
           data: {
@@ -101,31 +105,28 @@ export class UsersService {
           acceptedLegalDocumentIds,
           context,
         );
+
+        // Vincula los registros de deudor que los negocios crearon con el
+        // mismo documento o teléfono. Va en la transacción del registro: o
+        // se crea todo o nada.
+        const { count } = await tx.debtor.updateMany({
+          where: {
+            userId: null,
+            OR: [
+              { documentNumber: data.documentNumber },
+              ...(data.phone ? [{ phone: data.phone }] : []),
+            ],
+          },
+          data: { userId: created.id },
+        });
+        if (count > 0) {
+          this.logger.log(
+            `Vinculados ${count} registros de deudor al usuario ${created.id}`,
+          );
+        }
+
         return created;
       });
-
-      const debtorMatches = await this.prisma.debtor.findMany({
-        where: {
-          OR: [
-            { documentNumber: data.documentNumber ?? undefined },
-            { phone: data.phone ?? undefined },
-          ],
-          userId: null,
-        },
-      });
-
-      if (debtorMatches.length > 0) {
-        await this.prisma.debtor.updateMany({
-          where: {
-            id: { in: debtorMatches.map((d) => d.id) },
-          },
-          data: { userId: user.id },
-        });
-
-        console.log(
-          `🔗 Vinculados ${debtorMatches.length} deudores al usuario ${user.id}`,
-        );
-      }
 
       return user;
     } catch (error) {
@@ -150,7 +151,11 @@ export class UsersService {
     return users;
   }
 
-  async findOne(id: string): Promise<UserSafe | null> {
+  async findOne(id: string, actor: UserSafe): Promise<UserSafe | null> {
+    if (actor.id !== id && actor.role !== Role.ADMIN) {
+      throw new ForbiddenException('No puedes ver los datos de otro usuario');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: userSafeSelect,
@@ -158,6 +163,35 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     return user;
+  }
+
+  /**
+   * Busca un usuario activo por el dato exacto (correo, teléfono o
+   * documento) y devuelve solo su nombre, para agregarlo a un negocio sin
+   * exponer los datos de todos los usuarios.
+   */
+  async lookup(identifier: string): Promise<UserLookupResponseDto> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        inactivatedAt: null,
+        anonymizedAt: null,
+        OR: userIdentifierConditions(identifier),
+      },
+      select: { id: true, firstName: true, lastName: true },
+      take: 2,
+    });
+
+    if (!users.length) {
+      throw new NotFoundException(
+        'No encontramos un usuario activo con ese correo, teléfono o documento',
+      );
+    }
+    if (users.length > 1) {
+      throw new ConflictException(
+        'Ese dato corresponde a más de una cuenta. Búscalo con otro dato.',
+      );
+    }
+    return users[0];
   }
 
   async update(
@@ -255,10 +289,12 @@ export class UsersService {
       select: { id: true },
     });
 
-    if (!userExists) throw new Error('Usuario no encontrado');
+    if (!userExists) throw new NotFoundException('Usuario no encontrado');
 
     const [ownedBusinesses, workingBusinesses, clientBusinesses] =
       await Promise.all([
+        // Los propios incluyen los inactivos (marcados con inactivatedAt):
+        // el dueño todavía puede descargar su información.
         this.prisma.business.findMany({
           where: { ownerId: userId },
           select: {
@@ -267,10 +303,16 @@ export class UsersService {
             address: true,
             currency: true,
             createdAt: true,
+            inactivatedAt: true,
           },
         }),
+        // Donde trabaja: solo negocios activos que no son suyos (el dueño
+        // también figura como miembro OWNER y salía repetido).
         this.prisma.businessUser.findMany({
-          where: { userId },
+          where: {
+            userId,
+            business: { ownerId: { not: userId }, inactivatedAt: null },
+          },
           select: {
             id: true,
             role: true,
@@ -285,7 +327,11 @@ export class UsersService {
           },
         }),
         this.prisma.debtor.findMany({
-          where: { userId },
+          where: {
+            userId,
+            inactivatedAt: null,
+            business: { inactivatedAt: null },
+          },
           select: {
             id: true,
             name: true,

@@ -1,11 +1,8 @@
+import { IsOptional, IsUUID, IsDateString, IsEnum } from 'class-validator';
 import {
-  IsEmail,
-  IsOptional,
-  IsUUID,
-  IsPhoneNumber,
-  IsDateString,
-  IsEnum,
-} from 'class-validator';
+  IsColombianPhone,
+  IsNormalizedEmail,
+} from 'src/common/validation/contact.validators';
 import { InvitationType, BusinessUserRole } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -17,12 +14,12 @@ export class CreateInvitationDto {
 
   @ApiPropertyOptional({ example: 'user@example.com' })
   @IsOptional()
-  @IsEmail()
+  @IsNormalizedEmail()
   email?: string;
 
-  @ApiPropertyOptional({ example: '+573001234567' })
+  @ApiPropertyOptional({ example: '3001234567' })
   @IsOptional()
-  @IsPhoneNumber('CO')
+  @IsColombianPhone()
   phone?: string;
 
   @ApiProperty({

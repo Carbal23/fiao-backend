@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Query,
+} from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -13,6 +22,10 @@ import { UserResponseDto } from './dto/user-response.dto';
 import type { UserSafe } from './user.select';
 import { ApiAuth } from 'src/common/swagger/auth.decorator';
 import { UserDashboardDto } from './dto/user-dashboard.dto';
+import {
+  UserLookupQueryDto,
+  UserLookupResponseDto,
+} from './dto/user-lookup.dto';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { AccountLifecycleService } from 'src/account-lifecycle/account-lifecycle.service';
@@ -30,7 +43,11 @@ export class UsersController {
     private readonly accountLifecycle: AccountLifecycleService,
   ) {}
 
+  // Límite por IP: evita la creación masiva de cuentas y el uso del
+  // registro para averiguar qué datos están registrados.
   @Post()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 60 * 1000 } })
   @ApiOperation({ summary: 'Registrar un nuevo usuario' })
   @ApiResponse({
     status: 201,
@@ -45,23 +62,50 @@ export class UsersController {
     return this.usersService.create(data, context);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @ApiAuth()
   @Get()
-  @ApiOperation({ summary: 'Obtener todos los usuarios activos' })
+  @ApiOperation({ summary: 'Obtener todos los usuarios activos (solo ADMIN)' })
   @ApiResponse({
     status: 200,
     description: 'Lista de usuarios',
     type: [UserResponseDto],
   })
+  @ApiResponse({ status: 403, description: 'No es administrador' })
   findAll() {
     return this.usersService.findAll();
+  }
+
+  // Va antes de GET :id: si no, Express tomaría "lookup" como un id.
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
+  @ApiAuth()
+  @Get('lookup')
+  @ApiOperation({
+    summary: 'Buscar un usuario por su correo, teléfono o documento exacto',
+    description:
+      'Para agregarlo como miembro de un negocio. Devuelve solo id, nombre y apellido.',
+  })
+  @ApiResponse({ status: 200, type: UserLookupResponseDto })
+  @ApiResponse({
+    status: 404,
+    description: 'No hay un usuario activo con ese dato',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El dato corresponde a más de una cuenta',
+  })
+  lookup(@Query() query: UserLookupQueryDto) {
+    return this.usersService.lookup(query.identifier);
   }
 
   @UseGuards(JwtAuthGuard)
   @ApiAuth()
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener un usuario por ID' })
+  @ApiOperation({
+    summary: 'Obtener un usuario por ID (el propio usuario o un ADMIN)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Usuario encontrado',
@@ -71,8 +115,8 @@ export class UsersController {
     status: 404,
     description: 'Usuario no encontrado',
   })
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  findOne(@Param('id') id: string, @GetUser() actor: UserSafe) {
+    return this.usersService.findOne(id, actor);
   }
 
   @UseGuards(JwtAuthGuard)

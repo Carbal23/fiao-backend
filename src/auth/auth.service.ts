@@ -14,6 +14,7 @@ import { createHash, randomBytes, randomUUID } from 'crypto';
 import type { IJwtPayload } from './interfaces/jwt-payload.interface';
 import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
+import { userIdentifierConditions } from 'src/common/validation/user-identifier';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { LegalService } from 'src/legal/legal.service';
 import { AccountLifecycleService } from 'src/account-lifecycle/account-lifecycle.service';
@@ -46,11 +47,7 @@ export class AuthService {
   ): Promise<CredentialsCheck> {
     const candidates = await this.prisma.user.findMany({
       where: {
-        OR: [
-          { email: identifier },
-          { phone: identifier },
-          { documentNumber: identifier },
-        ],
+        OR: userIdentifierConditions(identifier),
         anonymizedAt: null,
       },
       take: 2,
@@ -241,7 +238,7 @@ export class AuthService {
     });
 
     return {
-      user: serializeUser(user) as UserSafe,
+      user: serializeUser(user),
       accessToken,
       accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshToken,
@@ -298,7 +295,7 @@ export class AuthService {
     });
 
     return {
-      user: serializeUser(user) as UserSafe,
+      user: serializeUser(user),
       accessToken: await this.signAccessToken(user),
       accessTokenExpiresIn: this.accessTokenExpiresIn,
       refreshToken: next.refreshToken,

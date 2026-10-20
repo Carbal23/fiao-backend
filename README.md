@@ -358,6 +358,8 @@ Una tarea programada (`AccountMaintenanceService`) corre **todos los días a las
 | `INACTIVE_ACCOUNT_RETENTION_MONTHS` | 48 |
 | `CLOSED_BUSINESS_RETENTION_MONTHS` | 6 |
 
+> **Detrás de un proxy (Render, nginx…):** define `TRUST_PROXY=1` (el número de proxies delante de la app). Sin ella, Nest ve la IP del proxy en lugar de la del usuario: los límites de intentos de login y registro se aplicarían a todos los usuarios a la vez, y los registros de seguridad tendrían siempre la misma IP. En local no hace falta.
+
 Para ejecutarla a mano (por ejemplo, si el servidor estuvo caído a esa hora):
 
 ```bash
