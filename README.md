@@ -341,6 +341,36 @@ El mismo comando existe para `development` y `production` (`legal:publish:develo
 
 ---
 
+## 🗓️ Ciclo de vida de cuentas y tarea diaria
+
+El usuario puede **desactivar** su cuenta (reversible) o **pedir su eliminación** (15 días de gracia y luego anonimización). Un dueño puede **transferir** su negocio a un miembro, que debe aceptarlo, y **descargar en Excel** la información de su negocio. El detalle funcional está en el documento de documentos legales y tratamiento de datos.
+
+Una tarea programada (`AccountMaintenanceService`) corre **todos los días a las 3:00 a. m. (hora Colombia)** y:
+
+1. anonimiza las cuentas cuya eliminación venció;
+2. anonimiza las cuentas desactivadas hace más de `INACTIVE_ACCOUNT_RETENTION_MONTHS`;
+3. marca como vencidas las transferencias de negocio sin respuesta (7 días);
+4. elimina los datos de los negocios inactivos hace más de `CLOSED_BUSINESS_RETENTION_MONTHS`.
+
+| Variable (opcional) | Por defecto |
+| --- | --- |
+| `ACCOUNT_DELETION_GRACE_DAYS` | 15 |
+| `INACTIVE_ACCOUNT_RETENTION_MONTHS` | 48 |
+| `CLOSED_BUSINESS_RETENTION_MONTHS` | 6 |
+
+Para ejecutarla a mano (por ejemplo, si el servidor estuvo caído a esa hora):
+
+```bash
+npm run build
+npm run maintenance:run:local   # o :development / :production
+```
+
+> ⚠️ **Primer despliegue en un entorno:** la primera ejecución actúa de inmediato sobre todo lo que ya cumpla los plazos (negocios inactivos hace más de 6 meses, cuentas inactivas hace más de 48). Antes de desplegar, revisa cuántos registros hay en esa situación.
+
+La tarea corre en cada instancia del servidor; es segura con varias instancias, porque cada cuenta y cada negocio se procesa una sola vez.
+
+---
+
 ## 🧩 Dependencias clave
 
 - `@nestjs/common`, `@nestjs/core`, `@nestjs/config` → estructura principal de NestJS

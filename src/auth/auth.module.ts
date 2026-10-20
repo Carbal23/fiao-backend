@@ -10,6 +10,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
 import { AuthLogModule } from 'src/auth-log/auth-log.module';
 import { LegalModule } from 'src/legal/legal.module';
+import { AccountLifecycleModule } from 'src/account-lifecycle/account-lifecycle.module';
 
 @Global()
 @Module({
@@ -32,6 +33,7 @@ import { LegalModule } from 'src/legal/legal.module';
     PrismaModule,
     AuthLogModule,
     LegalModule,
+    AccountLifecycleModule,
   ],
   providers: [AuthService, JwtStrategy, LoginThrottlerGuard],
   controllers: [AuthController],

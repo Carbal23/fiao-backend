@@ -21,6 +21,15 @@ model User {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   inactivatedAt   DateTime?
+  // Quién desactivó la cuenta: el propio usuario puede reactivarla al iniciar
+  // sesión; si fue un administrador, solo otro administrador.
+  inactivatedBy       InactivationSource?
+  // Solicitud de eliminación: la cuenta se anonimiza en deletionScheduledAt,
+  // salvo que el usuario la cancele antes.
+  deletionRequestedAt DateTime?
+  deletionScheduledAt DateTime?
+  // Datos personales eliminados. Es definitivo: la cuenta no se recupera.
+  anonymizedAt        DateTime?
   businesses      Business[]     @relation("OwnerBusinesses")
   businessUsers   BusinessUser[]
   createdDebts    Debt[]         @relation("UserCreatedDebts")
@@ -29,6 +38,8 @@ model User {
   refreshTokens   RefreshToken[]
   authLogs        AuthLog[]
   consents        UserConsent[]
+  transfersSent     BusinessOwnershipTransfer[] @relation("TransfersSent")
+  transfersReceived BusinessOwnershipTransfer[] @relation("TransfersReceived")
 }
 
 model Business {
@@ -47,6 +58,7 @@ model Business {
   payments      Payment[]
   invitations   Invitation[]   @relation("BusinessInvitations")
   paymentGroups PaymentGroup[]
+  ownershipTransfers BusinessOwnershipTransfer[]
 }
 
 model BusinessUser {
@@ -218,6 +230,16 @@ enum AuthLogEvent {
   PASSWORD_CHANGED
   PASSWORD_CHANGE_FAILED
   REFRESH_TOKEN_REUSED
+  ACCOUNT_DEACTIVATED
+  ACCOUNT_REACTIVATED
+  ACCOUNT_DELETION_REQUESTED
+  ACCOUNT_DELETION_CANCELLED
+  ACCOUNT_ANONYMIZED
+}
+
+enum InactivationSource {
+  SELF
+  ADMIN
 }
 
 model LegalDocument {
@@ -242,6 +264,7 @@ model UserConsent {
   acceptedAt DateTime      @default(now())
   ipAddress  String?
   userAgent  String?
+  revokedAt  DateTime? // el usuario retiró la autorización (eliminó su cuenta)
   user       User          @relation(fields: [userId], references: [id])
   document   LegalDocument @relation(fields: [documentId], references: [id])
 
@@ -252,6 +275,34 @@ model UserConsent {
 enum LegalDocumentType {
   TERMS_AND_CONDITIONS
   PRIVACY_POLICY
+}
+
+// Propuesta del dueño de un negocio para pasarle la propiedad a un miembro.
+// El miembro debe aceptarla: ser dueño implica responder por el negocio y por
+// los datos de sus clientes. Solo puede haber una pendiente por negocio.
+model BusinessOwnershipTransfer {
+  id          String                  @id @default(uuid())
+  businessId  String
+  fromUserId  String
+  toUserId    String
+  status      OwnershipTransferStatus @default(PENDING)
+  expiresAt   DateTime
+  respondedAt DateTime?
+  createdAt   DateTime                @default(now())
+  business    Business                @relation(fields: [businessId], references: [id])
+  fromUser    User                    @relation("TransfersSent", fields: [fromUserId], references: [id])
+  toUser      User                    @relation("TransfersReceived", fields: [toUserId], references: [id])
+
+  @@index([businessId, status])
+  @@index([toUserId, status])
+}
+
+enum OwnershipTransferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  EXPIRED
 }
 
 enum DocumentType {

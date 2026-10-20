@@ -13,6 +13,8 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
 import { LegalModule } from './legal/legal.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AccountLifecycleModule } from './account-lifecycle/account-lifecycle.module';
 
 @Global()
 @Module({
@@ -34,6 +36,8 @@ import { LegalModule } from './legal/legal.module';
     AuditModule,
     HealthModule,
     LegalModule,
+    ScheduleModule.forRoot(),
+    AccountLifecycleModule,
   ],
   controllers: [],
   providers: [],

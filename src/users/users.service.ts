@@ -55,13 +55,13 @@ export class UsersService {
     if (existingUser) {
       if (existingUser.inactivatedAt) {
         throw new BadRequestException(
-          `Ya existe un usuario registrado con ${
+          `Ya existe una cuenta con ${
             existingUser.email === data.email
               ? 'este correo electrónico'
               : existingUser.phone === data.phone
                 ? 'este número de teléfono'
                 : 'este número de documento'
-          }, pero actualmente está inactivo.`,
+          }, pero está desactivada. Inicia sesión para reactivarla o comunícate con soporte.`,
         );
       }
 
@@ -241,22 +241,6 @@ export class UsersService {
     });
 
     return { message: 'Contraseña actualizada correctamente' };
-  }
-
-  async inactivate(id: string, actor: UserSafe): Promise<{ message: string }> {
-    this.assertCanManage(actor, id);
-
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-
-    await this.prisma.user.update({
-      where: { id },
-      data: { inactivatedAt: new Date() },
-    });
-
-    return {
-      message: 'User inactivated successfully',
-    };
   }
 
   private assertCanManage(actor: UserSafe, targetId: string) {

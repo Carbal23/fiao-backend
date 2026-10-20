@@ -16,6 +16,7 @@ import { UserSafe, userSafeSelect } from 'src/users/user.select';
 import { serializeUser } from 'src/users/helpers/user.serializer';
 import { AuthLogService } from 'src/auth-log/auth-log.service';
 import { LegalService } from 'src/legal/legal.service';
+import { AccountLifecycleService } from 'src/account-lifecycle/account-lifecycle.service';
 import { AuthLogReason, RequestContext } from 'src/auth-log/auth-log.types';
 import type { CredentialsCheck } from './interfaces/credentials-check.interface';
 import type { Device } from './interfaces/device.interface';
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly authLog: AuthLogService,
     private readonly legalService: LegalService,
+    private readonly accountLifecycle: AccountLifecycleService,
   ) {}
 
   private async validateCredentials(
@@ -49,7 +51,7 @@ export class AuthService {
           { phone: identifier },
           { documentNumber: identifier },
         ],
-        inactivatedAt: null,
+        anonymizedAt: null,
       },
       take: 2,
     });
@@ -176,10 +178,12 @@ export class AuthService {
     dto: LoginDto,
     context?: RequestContext,
   ): Promise<TokenResponseDto> {
-    const { user, attemptedUserId, ambiguous } = await this.validateCredentials(
+    const credentials = await this.validateCredentials(
       dto.identifier,
       dto.password,
     );
+    const { attemptedUserId, ambiguous } = credentials;
+    let user = credentials.user;
 
     if (!user) {
       await this.authLog.record({
@@ -200,6 +204,26 @@ export class AuthService {
         );
       }
       throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    // La contraseña es correcta, pero la cuenta puede no estar activa. Si la
+    // desactivó el propio usuario (o pidió eliminarla), puede reactivarla
+    // repitiendo el login con `reactivate: true`.
+    const state = this.accountLifecycle.loginState(user);
+    if (state !== 'ACTIVE') {
+      if (state === 'DISABLED' || !dto.reactivate) {
+        await this.authLog.record({
+          event: AuthLogEvent.LOGIN_FAILED,
+          userId: user.id,
+          identifier: dto.identifier,
+          reason: AuthLogReason[`ACCOUNT_${state}`],
+          deviceId: dto.deviceId,
+          deviceName: dto.deviceName,
+          context,
+        });
+        throw this.accountLifecycle.loginBlockedException(user, state);
+      }
+      user = await this.accountLifecycle.reactivate(user, context);
     }
 
     const accessToken = await this.signAccessToken(user);
