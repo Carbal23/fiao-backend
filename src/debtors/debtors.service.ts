@@ -27,16 +27,6 @@ export class DebtorsService {
     currentUserId: string,
     data: CreateDebtorDto,
   ): Promise<Debtor> {
-    // Buscar si ya existe un user con los datos del deudor
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { documentNumber: data.documentNumber ?? undefined },
-          { phone: data.phone ?? undefined },
-        ],
-      },
-    });
-
     // Validar duplicado dentro del mismo negocio
     const existingDebtor = await this.prisma.debtor.findFirst({
       where: {
@@ -55,10 +45,12 @@ export class DebtorsService {
     }
 
     const debtor = await this.prisma.debtor.create({
+      // No se vincula a ningún usuario por coincidencia de teléfono o
+      // documento: el vínculo solo se crea cuando el cliente acepta una
+      // invitación del negocio (POST /invitations/accept).
       data: {
         ...data,
         businessId,
-        userId: existingUser?.id ?? null,
       },
     });
 

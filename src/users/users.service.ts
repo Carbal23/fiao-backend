@@ -3,7 +3,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,8 +32,6 @@ const ADMIN_ONLY_FIELDS = [
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly authLog: AuthLogService,
@@ -105,25 +102,6 @@ export class UsersService {
           acceptedLegalDocumentIds,
           context,
         );
-
-        // Vincula los registros de deudor que los negocios crearon con el
-        // mismo documento o teléfono. Va en la transacción del registro: o
-        // se crea todo o nada.
-        const { count } = await tx.debtor.updateMany({
-          where: {
-            userId: null,
-            OR: [
-              { documentNumber: data.documentNumber },
-              ...(data.phone ? [{ phone: data.phone }] : []),
-            ],
-          },
-          data: { userId: created.id },
-        });
-        if (count > 0) {
-          this.logger.log(
-            `Vinculados ${count} registros de deudor al usuario ${created.id}`,
-          );
-        }
 
         return created;
       });
